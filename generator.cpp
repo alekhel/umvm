@@ -1,4 +1,4 @@
-#include "umivm.h"
+#include "umvm.h"
 #include <random>
 
 int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
