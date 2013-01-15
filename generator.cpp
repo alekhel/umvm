@@ -1,6 +1,13 @@
 #include "umvm.h"
+#ifdef C11RANDOM
 #include <random>
+#else
+#include <cstdlib>
+#endif
 
+
+
+#ifdef C11RANDOM
 int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
                           int MinWeight, int MaxWeight, Matrix &m)
 /*Attention, columns indexes are not sorted by default*/
@@ -19,3 +26,21 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
     }
     return 0;
 }
+#else
+int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
+                          int MinWeight, int MaxWeight, Matrix &m)
+/*Attention, columns indexes are not sorted by default*/
+/*The first version does not use MaxWeight parameter*/
+{
+    
+    m.clear();
+    for (Ind i = StartRow; i < EndRow; i++)
+    {
+        for(int j = 0; j < MinWeight; j++)
+        {
+    //        m[StartRow + j].push_back( StartColumn + distribution(generator));
+        }     
+    }
+    return 0;
+}
+#endif
