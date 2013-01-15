@@ -3,17 +3,19 @@
 #include <stdlib.h>
 #include "mpi.h"
 #include <sys/mman.h>
-
+#include "umvm.h"
+Matrix m;
 int main(int argc, char* argv[])
 {
     int rank, P;
-    int MaxX, MaxY;
+    int MaxX, MaxY, X, Y;
     int opt;
 
-    // parameters for MPI_Cart_create
+    // parameters for MPI_Cart_*
     int Dimensions[2] = {-1, -1};
     int Periods[2] = {1, 1}; 
-
+    int CartesianCoords[2];
+    
     MaxX = MaxY =  -1;
  
     MPI_Comm Cartesian;
@@ -33,20 +35,19 @@ int main(int argc, char* argv[])
             MaxY = strtoul(optarg, NULL, 0);
             break;
         default:
-            if(rank == 0) std::cout << "Unknown option. \n";
+            if(rank == 0) printf( "Unknown option. \n");
             
         }
    if((MaxX == -1)||(MaxY == -1))
     {
-        if(rank == 0) std::cout << "Please, specify grid size by -X and -Y options.\n";
+        if(rank == 0) printf("Please, specify grid size by -X and -Y options.\n");
         MPI_Finalize();
         return 0;
     }
    
-    if( MaxX * MaxY > P)
+    if( MaxX * MaxY != P)
     {
-        if(rank == 0) std::cout << "Grid is too large for this number of processes. X*Y should be less than number of\
-            processes\n";
+        if(rank == 0) printf("X*Y should be equal to the number of processes.\n");
         MPI_Finalize();
         return 0;
     }
@@ -55,9 +56,11 @@ int main(int argc, char* argv[])
     Dimensions[1] = MaxY;
     
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 1, &Cartesian) != MPI_SUCCESS)
-        if(rank == 0) std::cout << "Failed to create Cartesian communicator\n"; 
-
-    std::cout << "Hello matrix!\n" << MaxX << " " << MaxY << " "; 
+        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
+    
+    
+    MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
+    printf("Hello Matrix! My coords are %d, %d \n", CartesianCoords[0], CartesianCoords[1]);
     
     MPI_Finalize();
     return 1;
