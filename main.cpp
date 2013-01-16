@@ -50,7 +50,8 @@ int main(int argc, char* argv[])
             if(rank == 0) printf( "Unknown option. \n");
             
         }
-    ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight);
+    if(ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight))
+        return -1;
 
     Dimensions[0] = MaxX;
     Dimensions[1] = MaxY;

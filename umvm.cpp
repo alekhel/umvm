@@ -46,6 +46,7 @@ int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
         MPI_Finalize();
         return -1;
     }
+    return 0;
 };
 
 void TryGenerateStripRowwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)

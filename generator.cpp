@@ -25,7 +25,7 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            m[StartRow + i].push_back( StartColumn + distribution(generator));
+            m[i].push_back( StartColumn + distribution(generator));
         }     
     }
     return 0;
@@ -44,8 +44,7 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            printf ("i %lu, j  %d\n", i, j);
-            m[StartRow + i].push_back( StartColumn +  floor((EndColumn - StartColumn)*(double(rand())/RAND_MAX)));
+            m[i].push_back( StartColumn +  floor((EndColumn - StartColumn)*(double(rand())/RAND_MAX)));
         }     
     }
     return 0;
