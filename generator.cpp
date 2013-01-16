@@ -1,4 +1,7 @@
 #include "umvm.h"
+#include "math.h"
+#include <stdio.h>
+#include <time.h>
 #ifdef C11RANDOM
 #include <random>
 #else
@@ -15,13 +18,14 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
 {
     
     m.clear();
+    int H = EndRow - StartRow;
     std::default_random_engine generator(4);
     std::uniform_int_distribution<unsigned int> distribution(0, EndColumn - StartColumn);
     for (Ind i = StartRow; i < EndRow; i++)
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            m[StartRow + j].push_back( StartColumn + distribution(generator));
+            m[StartRow + i].push_back( StartColumn + distribution(generator));
         }     
     }
     return 0;
@@ -34,11 +38,14 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
 {
     
     m.clear();
+    int H = EndRow - StartRow;
+    srand(time(NULL)^StartRow); 
     for (Ind i = StartRow; i < EndRow; i++)
     {
         for(int j = 0; j < MinWeight; j++)
         {
-    //        m[StartRow + j].push_back( StartColumn + distribution(generator));
+            printf ("i %lu, j  %d\n", i, j);
+            m[StartRow + i].push_back( StartColumn +  floor((EndColumn - StartColumn)*(double(rand())/RAND_MAX)));
         }     
     }
     return 0;
