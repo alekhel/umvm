@@ -61,3 +61,28 @@ void TryGenerateStripRowwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned 
         for(unsigned int j = 0;  j < strip[i].size(); j ++ )
             printf ("My rank is %d, my  strip[%d][%d] = %7lu\n", rank, i, j,  strip[i][j]);
 }
+
+void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
+{
+    Columns.clear();
+    for(Matrix::iterator it = Rows.begin(); it != Rows.end(); it++)
+        for(unsigned int i = 0; i < it->second.size(); i++)
+            Columns[it->second[i]].push_back(it->first);
+}
+
+void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
+{
+    Matrix Columns, Rows;
+    int rank;
+    int H;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    H = N/P;
+    GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Rows);
+    RowwiseToColumnwise(Rows, Columns);
+
+    for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
+        for(unsigned int j = 0;  j < it->second.size(); j ++ )
+            printf ("My rank is %d, my  Columns[%lu][%u] = %7lu\n", rank, it->first, j,  it->second[j]);
+}
+
+

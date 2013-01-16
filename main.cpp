@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
     
     MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
 
-    TryGenerateStripRowwise(P, MaxX, MaxY, N, M, Weight);
+    TryRowwiseToColumnwise(P, MaxX, MaxY, N, M, Weight);
     
     MPI_Finalize();
     return 1;

@@ -10,3 +10,9 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
 void TryGenerateStripRowwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
 
 int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
+
+void RowwiseToColumnwise(Matrix Rows, Matrix &Columns);
+
+void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
+
+
