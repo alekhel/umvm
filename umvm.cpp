@@ -80,9 +80,9 @@ void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned i
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Rows);
     RowwiseToColumnwise(Rows, Columns);
 
-    for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
-        for(unsigned int j = 0;  j < it->second.size(); j ++ )
-            printf ("My rank is %d, my  Columns[%lu][%u] = %7lu\n", rank, it->first, j,  it->second[j]);
+   // for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
+     //   for(unsigned int j = 0;  j < it->second.size(); j ++ )
+       //     printf ("My rank is %d, my  Columns[%lu][%u] = %7lu\n", rank, it->first, j,  it->second[j]);
 }
 
 
