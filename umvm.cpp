@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -181,6 +182,8 @@ void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY,
     int RecieveCount[MaxX][MaxY];
     int RecieveSize[MaxX][MaxY];
     int MyMaxSendSize = 0;
+    int MySendCount = 0;
+    int MyRecieveCount = 0;
     int CurSendSize = 0;
     int HeaderSize = 2;
     memset(SendCount, 0, MaxX*MaxY*sizeof(int));
@@ -201,7 +204,12 @@ void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY,
         SendSize[StripH*rank/BlockH][it->first/BlockW] += CurSendSize;
         if(MyMaxSendSize < CurSendSize) MyMaxSendSize = CurSendSize;
     }
+    for(int i = 0; i < MaxX; i++)
+        for(int j = 0; j < MaxY; j++)
+            MySendCount += SendCount[i][j];
+
     MPI_Allreduce(SendCount, RecieveCount, MaxX*MaxY, MPI_INT, MPI_SUM, Cartesian);    
+    MyRecieveCount =  RecieveCount[CartX][CartY];
     #ifdef DEBUG_PRINT
     printf("My coords are [%d, %d], I'll  recieve %d messages.\n", CartX, CartY, RecieveCount[CartX][CartY]);
     for (int i = 0; i < MaxX; i++)
@@ -210,8 +218,42 @@ void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY,
                     CartX, CartY, SendCount[i][j], i, j);
     #endif
     MPI_Allreduce(SendSize, RecieveSize, MaxX*MaxY, MPI_INT, MPI_MAX, Cartesian);    
-    
-
+    #ifdef DEBUG_PRINT
+    printf("My coords are [%d, %d], and my MaxRecieveSize is %d.\n", CartX, CartY, RecieveSize[CartX][CartY]);
+    for (int i = 0; i < MaxX; i++)
+        for(int j = 0; j < MaxY; j++)
+            printf("My coords are [%d, %d], I'll send %d messages to [%d, %d].\n",
+                    CartX, CartY, SendCount[i][j], i, j);
+    #endif
+    int RecieveBuf[RecieveSize[CartX][CartY]];
+    int MyCartCoords[2] = {CartX, CartY};
+    int SendBuf[MyMaxSendSize];
+    int DestCartCoords[2];
+    int DestRank = 0;
+    printf ("Start sending\n");
+    for(int i = 0; i < MaxX; i++)
+        for(int j = 0; j < MaxY; j++)
+        {
+            if((CartX == i)&&(CartY == j))
+            {
+                for(int k = 0; k < MaxX; k++)
+                    for(int l = 0; l < MaxY; l++)
+                        if((k!=i)&&(l!=j))
+                        {
+                            DestCartCoords[0] = k;
+                            DestCartCoords[1] = l;
+                            MPI_Cart_rank(Cartesian, DestCartCoords, &DestRank);
+                            SendBuf[0] = rank;
+                            MPI_Send(SendBuf, 1, MPI_INT, DestRank, 0, MPI_COMM_WORLD);
+                        }
+            }
+            else
+            {
+                MPI_Recv(RecieveBuf, RecieveSize[CartX][CartY], MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, NULL);
+                printf("My rank is %d, recieved a message from %d\n", rank,  RecieveBuf[0]);
+            }
+            
+        }
 }
 
 

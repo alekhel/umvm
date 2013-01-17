@@ -62,10 +62,9 @@ int main(int argc, char* argv[])
 
     Matrix Strip, Columns, Block;
     H = N/P;
-//    GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
-//    RowwiseToColumnwise(Strip, Columns);
-//    DistributeMatrixChunks(CartesianCoords[0], CartesianCoords[1], P, MaxX, MaxY, N, M, Columns, Cartesian);
-    TrySerializeChunk(P, MaxX, MaxY, N, M, Weight);
+    GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
+    RowwiseToColumnwise(Strip, Columns);
+    DistributeMatrixChunks(CartesianCoords[0], CartesianCoords[1], P, MaxX, MaxY, N, M, Columns, Cartesian);
 
     MPI_Finalize();
     return 1;
