@@ -1,4 +1,3 @@
-#include "mpi.h"
 #include <iostream>
 #include <unistd.h>
 #include <stdlib.h>
@@ -9,10 +8,10 @@ int main(int argc, char* argv[])
     int rank, P;
     int MaxX, MaxY, X, Y; //Grid parameters and coords
     unsigned int N, M; //Matrix height and width
-    unsigned int Weight; // Average row weight
+    unsigned int Weight; // Average row weight    
     int opt;
     
-    
+    int H;
     
     // parameters for MPI_Cart_*
     int Dimensions[2] = {-1, -1};
@@ -61,8 +60,13 @@ int main(int argc, char* argv[])
     
     MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
 
-    TryRowwiseToColumnwise(P, MaxX, MaxY, N, M, Weight);
-    
+    Matrix Strip, Columns, Block;
+    H = N/P;
+//    GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
+//    RowwiseToColumnwise(Strip, Columns);
+//    DistributeMatrixChunks(CartesianCoords[0], CartesianCoords[1], P, MaxX, MaxY, N, M, Columns, Cartesian);
+    TrySerializeChunk(P, MaxX, MaxY, N, M, Weight);
+
     MPI_Finalize();
     return 1;
 }

@@ -1,6 +1,9 @@
+#include "mpi.h"
 #include <map>
 #include <vector>
-// #define C11RANDOM // uncomment if your compiler supports -std=c++11
+//#define C11RANDOM // uncomment if your compiler supports -std=c++11
+#define DEBUG_PRINT
+#define BUFFER_CHECKS // comment only if the speedup is really necessary
 typedef unsigned long int Ind;
 typedef std::map < Ind, std::vector <Ind> > Matrix; 
 
@@ -15,4 +18,9 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns);
 
 void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
 
+void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY, 
+                            Ind  N, Ind M, Matrix &Columns, MPI_Comm Cartesian);
 
+int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Size, int Type,  int Res[]);
+
+void TrySerializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
