@@ -251,20 +251,16 @@ Elements to send are determined by GetChunkDestinatedToXY function.
     int size = CountElements(Columns);
     int sent_size = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    printf("[DistributeMatrixChunks] My rank is %d, have %d elements\n", rank, size );
-    PrintMatrixStructure(Columns);
     for(int i = 0; i < P; i++)
         if(rank == i)   
         {
             for(int j = 0; j < P; j++)
                 if(i != j)
                 {
-                    printf("[DistributeMatrixChunks] My rank is %d, sending message to %d\n", rank,  j);
                     MPI_Cart_coords(Cartesian, j, 2, DestCoords);
                     if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk))
                     {
                         SendBuf[1] = 1;
-                        PrintMatrixStructure(Chunk);
                         sent_size += CountElements(Chunk);
                         MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
                     }
@@ -273,20 +269,15 @@ Elements to send are determined by GetChunkDestinatedToXY function.
                         SendBuf[0] = 0;
                         MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
                     }
-          //          printf("[DistributeMatrixChunks] My rank is %d, sent message to %d\n", rank,  j);
                 }
         }
         else
         {
-         //   printf("[DistributeMatrixChunks] My rank is %d, waiting message from %d\n", rank,  i);
             MPI_Recv(RecieveBuf, MaxSendSize, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
-       //     printf("[DistributeMatrixChunks] My rank is %d, recieved message from %d\n", rank,  i);
         }
             
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
     GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk);
-    printf("[DistributeMatrixChunks] My rank is %d, sent  %d elements; %d are mine.\n", rank, sent_size, CountElements(Chunk) );
-     PrintMatrixStructure(Chunk);
 }
 
 
