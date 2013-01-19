@@ -81,11 +81,9 @@ void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned i
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Rows);
     RowwiseToColumnwise(Rows, Columns);
 
-    #ifdef DEBUG_PRINT
     for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
         for(unsigned int j = 0;  j < it->second.size(); j ++ )
               printf ("My rank is %d, my  Columns[%lu][%u] = %7lu\n", rank, it->first, j,  it->second[j]);
-    #endif
 }
 
 
@@ -171,89 +169,124 @@ void TrySerializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int We
             printf("%d ", Buf[i]);
     printf("\n");
 }
+int CountElements(Matrix &m)
+{
+    Matrix::iterator it;
+    int res = 0;
+    for(it = m.begin(); it != m.end(); it++)
+        res+=it->second.size();
+    return res;
+}
 
-void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY, 
-                            Ind  N, Ind M, Matrix &Columns, MPI_Comm Cartesian)
+void PrintMatrixStructure(Matrix &m)
+{
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    for(Matrix::iterator it = m.begin(); it != m.end(); it++)
+    {
+        printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu\n", rank, it->second.size(), it->first);
+    }
+}
+int GetChunkDestinatedToXY(int X, int Y, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, Matrix &Chunk)
+/*
+Chunk is an output parameter.
+This version distributes equal number of columns, but only across processes that should recieve columns from this one.
+Returns 0 if there is no elements destinated to XY, 1 otherwise.
+Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator processes)
+1 1 1 1        1 1 2 2
+2 2 2 2  ---\  1 1 2 2
+3 3 3 3  ---/  3 3 4 4
+4 4 4 4        3 3 4 4
+*/
 {
     int rank;
     int StripH, BlockH, BlockW;
-    int SendCount[MaxX][MaxY];
-    int SendSize[MaxX][MaxY];
-    int RecieveCount[MaxX][MaxY];
-    int RecieveSize[MaxX][MaxY];
-    int MyMaxSendSize = 0;
-    int MySendCount = 0;
-    int MyRecieveCount = 0;
-    int CurSendSize = 0;
-    int HeaderSize = 2;
-    memset(SendCount, 0, MaxX*MaxY*sizeof(int));
-    memset(SendSize, HeaderSize*sizeof(int), MaxX*MaxY*sizeof(int)); 
-    memset(RecieveCount, 0, MaxX*MaxY*sizeof(int));
-    memset(RecieveSize, 0, MaxX*MaxY*sizeof(int));
-    
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    Ind Lower, Upper;
+    Chunk.clear();
     StripH = N/P;
     BlockH = N/MaxX;
     BlockW = M/MaxY;
-
-
-    for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
-    {
-        SendCount[StripH*rank/BlockH][it->first/BlockW] |= 1;
-        CurSendSize =  (2 + it->second.size())*sizeof(Ind); 
-        SendSize[StripH*rank/BlockH][it->first/BlockW] += CurSendSize;
-        if(MyMaxSendSize < CurSendSize) MyMaxSendSize = CurSendSize;
-    }
-    for(int i = 0; i < MaxX; i++)
-        for(int j = 0; j < MaxY; j++)
-            MySendCount += SendCount[i][j];
-
-    MPI_Allreduce(SendCount, RecieveCount, MaxX*MaxY, MPI_INT, MPI_SUM, Cartesian);    
-    MyRecieveCount =  RecieveCount[CartX][CartY];
-    #ifdef DEBUG_PRINT
-    printf("My coords are [%d, %d], I'll  recieve %d messages.\n", CartX, CartY, RecieveCount[CartX][CartY]);
-    for (int i = 0; i < MaxX; i++)
-        for(int j = 0; j < MaxY; j++)
-            printf("My coords are [%d, %d], I'll send %d messages to [%d, %d].\n",
-                    CartX, CartY, SendCount[i][j], i, j);
-    #endif
-    MPI_Allreduce(SendSize, RecieveSize, MaxX*MaxY, MPI_INT, MPI_MAX, Cartesian);    
-    #ifdef DEBUG_PRINT
-    printf("My coords are [%d, %d], and my MaxRecieveSize is %d.\n", CartX, CartY, RecieveSize[CartX][CartY]);
-    for (int i = 0; i < MaxX; i++)
-        for(int j = 0; j < MaxY; j++)
-            printf("My coords are [%d, %d], I'll send %d messages to [%d, %d].\n",
-                    CartX, CartY, SendCount[i][j], i, j);
-    #endif
-    int RecieveBuf[RecieveSize[CartX][CartY]];
-    int MyCartCoords[2] = {CartX, CartY};
-    int SendBuf[MyMaxSendSize];
-    int DestCartCoords[2];
-    int DestRank = 0;
-    printf ("Start sending\n");
-    for(int i = 0; i < MaxX; i++)
-        for(int j = 0; j < MaxY; j++)
+    Matrix::iterator Start, End;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if(X != StripH*rank/BlockH)
+        return 0;
+ 
+    if(Columns.end() != (Start = Columns.lower_bound(Y*BlockW)))
+      {
+          End = Columns.lower_bound((Y+1)*BlockW);
+          Upper = (--End)->first;
+          Lower = Start->first;
+          if(( Upper >= (unsigned int)(Y*BlockW)) && (Lower <= Upper)) 
+          {
+                    Chunk = Matrix(Start, ++End); 
+                    return 1;
+          }
+      }
+    return 0;    
+}
+void DistributeMatrixChunks(int P, int MaxX, int MaxY, Ind  N, Ind M, Matrix &Columns, MPI_Comm Cartesian)
+/*
+Each process sends a message to all others, containing 0 if it has no elements destinated to reciever, packed chunk
+otherwise. Packages with elements start with number of first dimension entries, could not be 0.
+Elements to send are determined by GetChunkDestinatedToXY function.
+*/
+{
+    int rank;
+    int StripH, BlockH, BlockW;
+    int MaxSendSize = 0;
+    int DestCoords[2];
+    int MyCoords[2];
+    Matrix Chunk;
+    MPI_Status status;
+     
+    StripH = N/P;
+    BlockH = N/MaxX;
+    BlockW = M/MaxY;
+    MaxSendSize = BlockW*BlockH + 2*BlockW+ 2;
+    
+    int SendBuf[MaxSendSize];
+    int RecieveBuf[MaxSendSize];
+    memset(SendBuf, 0, MaxSendSize*sizeof(int));
+    memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
+    int size = CountElements(Columns);
+    int sent_size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    printf("[DistributeMatrixChunks] My rank is %d, have %d elements\n", rank, size );
+    PrintMatrixStructure(Columns);
+    for(int i = 0; i < P; i++)
+        if(rank == i)   
         {
-            if((CartX == i)&&(CartY == j))
-            {
-                for(int k = 0; k < MaxX; k++)
-                    for(int l = 0; l < MaxY; l++)
-                        if((k!=i)&&(l!=j))
-                        {
-                            DestCartCoords[0] = k;
-                            DestCartCoords[1] = l;
-                            MPI_Cart_rank(Cartesian, DestCartCoords, &DestRank);
-                            SendBuf[0] = rank;
-                            MPI_Send(SendBuf, 1, MPI_INT, DestRank, 0, MPI_COMM_WORLD);
-                        }
-            }
-            else
-            {
-                MPI_Recv(RecieveBuf, RecieveSize[CartX][CartY], MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, NULL);
-                printf("My rank is %d, recieved a message from %d\n", rank,  RecieveBuf[0]);
-            }
-            
+            for(int j = 0; j < P; j++)
+                if(i != j)
+                {
+                    printf("[DistributeMatrixChunks] My rank is %d, sending message to %d\n", rank,  j);
+                    MPI_Cart_coords(Cartesian, j, 2, DestCoords);
+                    if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk))
+                    {
+                        SendBuf[1] = 1;
+                        PrintMatrixStructure(Chunk);
+                        sent_size += CountElements(Chunk);
+                        MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
+                    }
+                    else                            
+                    {
+                        SendBuf[0] = 0;
+                        MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
+                    }
+          //          printf("[DistributeMatrixChunks] My rank is %d, sent message to %d\n", rank,  j);
+                }
         }
+        else
+        {
+         //   printf("[DistributeMatrixChunks] My rank is %d, waiting message from %d\n", rank,  i);
+            MPI_Recv(RecieveBuf, MaxSendSize, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
+       //     printf("[DistributeMatrixChunks] My rank is %d, recieved message from %d\n", rank,  i);
+        }
+            
+    MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
+    GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk);
+    printf("[DistributeMatrixChunks] My rank is %d, sent  %d elements; %d are mine.\n", rank, sent_size, CountElements(Chunk) );
+     PrintMatrixStructure(Chunk);
 }
 
 

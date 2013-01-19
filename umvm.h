@@ -18,7 +18,7 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns);
 
 void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
 
-void DistributeMatrixChunks(int CartX, int CartY, int P, int MaxX, int MaxY, 
+void DistributeMatrixChunks(int P, int MaxX, int MaxY, 
                             Ind  N, Ind M, Matrix &Columns, MPI_Comm Cartesian);
 
 int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Size, int Type,  int Res[]);

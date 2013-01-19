@@ -54,17 +54,18 @@ int main(int argc, char* argv[])
 
     Dimensions[0] = MaxX;
     Dimensions[1] = MaxY;
-    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 1, &Cartesian) != MPI_SUCCESS)
+    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
     
     
     MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
+    printf("[main] My rank is %d, CartCoords %d, %d\n", rank, CartesianCoords[0], CartesianCoords[1]);
 
     Matrix Strip, Columns, Block;
     H = N/P;
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     RowwiseToColumnwise(Strip, Columns);
-    DistributeMatrixChunks(CartesianCoords[0], CartesianCoords[1], P, MaxX, MaxY, N, M, Columns, Cartesian);
+    DistributeMatrixChunks( P, MaxX, MaxY, N, M, Columns, Cartesian);
 
     MPI_Finalize();
     return 1;
