@@ -12,12 +12,12 @@ int main(int argc, char* argv[])
     int opt;
     
     int H;
-    double StartGenerationTime, EndGenerationTime; 
+    double StartTime, EndTime; 
     // parameters for MPI_Cart_*
     int Dimensions[2] = {-1, -1};
     int Periods[2] = {1, 1}; 
     int CartesianCoords[2];
-    
+    Matrix Strip, Columns, Block;
     MaxX = MaxY = N = M = Weight = 0;
  
     MPI_Comm Cartesian;
@@ -56,20 +56,31 @@ int main(int argc, char* argv[])
     Dimensions[1] = MaxY;
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
-    
-    
     MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
-    printf("[main] My rank is %d, CartCoords %d, %d\n", rank, CartesianCoords[0], CartesianCoords[1]);
-
-    Matrix Strip, Columns, Block;
     H = N/P;
-    StartGenerationTime = MPI_Wtime();
+  
+    StartTime = MPI_Wtime();
+
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
-    RowwiseToColumnwise(Strip, Columns);
-    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
-    EndGenerationTime = MPI_Wtime();
+    
+    EndTime = MPI_Wtime();
     if(rank == 0)
-        printf("[main] Generation took %f seconds.\n", EndGenerationTime - StartGenerationTime);
+        printf("[main] Generation of strip took %f seconds.\n", EndTime - StartTime);
+    StartTime = EndTime;
+
+    RowwiseToColumnwise(Strip, Columns);
+   
+    EndTime = MPI_Wtime();
+    if(rank == 0)
+        printf("[main] Transposition took %f seconds.\n",   EndTime - StartTime);
+    StartTime = EndTime;
+   
+    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
+    
+    EndTime = MPI_Wtime();
+    if(rank == 0)
+        printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
+    
     MPI_Finalize();
     return 1;
 }

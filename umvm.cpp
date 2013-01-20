@@ -48,7 +48,7 @@ int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
         return -1;
     }
     return 0;
-};
+}
 
 void TryGenerateStripRowwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
@@ -161,6 +161,7 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
  Then there is array of Sum_{i = 0, i = j} Length[i].
  Then there are arrays of second dimension data.
  Variables are named as if first dimension was Columns, second dimension was Rows.
+ Returns 0 on failure, Size otherwise.
 */
 {
     int ColumnsCount = 0;
@@ -169,6 +170,8 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
     Chunk.clear();
    
     ColumnsCount = Buf[0];
+    if(!ColumnsCount)
+        return 0;
     Type = Buf[1];
     Size = Buf[HeaderSize + 2*ColumnsCount - 1]  + HeaderSize + 2*ColumnsCount;
     #ifdef BUFFER_CHECKS
@@ -207,9 +210,10 @@ void TrySerializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int We
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     H = N/P;
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, strip);
-    int  Buf[Weight*H+2*H+2];
+    int  *Buf = new int [Weight*H+2*H+2];
     if(!SerializeChunk(strip.begin(), strip.end(), Weight*H+2*H+2, 1, Buf))    
     {
+        delete [] Buf;
         printf("Buffer overflow in SeriaizeChunk. SerializeChunk returned 0.\n");
         return;
     }
@@ -217,6 +221,7 @@ void TrySerializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int We
         for(unsigned int i = 0; i < Weight*H +2*H +2; i++)
             printf("%d ", Buf[i]);
     printf("\n");
+    delete [] Buf;
 }
 
 
@@ -249,15 +254,17 @@ void TryDeserializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
     H = N/P;
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, strip);
     PrintMatrixStructure(strip);
-    int  Buf[Weight*H+2*H+2];
+    int  *Buf = new int [Weight*H+2*H+2];
     printf("Serializing...\n");
     if(!SerializeChunk(strip.begin(), strip.end(), Weight*H+2*H+2, 1, Buf))    
     {
+        delete [] Buf;
         printf("Buffer overflow in SeriaizeChunk. SerializeChunk returned 0.\n");
         return;
     }
     DeserializeChunk(Buf, Type, Chunk);
     PrintMatrixStructure(Chunk);
+    delete [] Buf;
 }
 
 
@@ -298,11 +305,17 @@ Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator proces
       }
     return 0;    
 }
-void DistributeMatrixChunks(int P, int MaxX, int MaxY, int MaxWeight, Ind  N, Ind M, Matrix &Columns, Matrix &Block, MPI_Comm Cartesian)
+int DistributeMatrixChunks(int P, int MaxX, int MaxY, int MaxWeight, Ind  N, Ind M, Matrix &Columns, Matrix &Block, MPI_Comm Cartesian)
 /*
-Each process sends a message to all others, containing 0 if it has no elements destinated to reciever, packed chunk
+Each process sends a message to all others, containing 0 if it has no elements destinated to reciever, packed chunk.
 otherwise. Packages with elements start with number of first dimension entries, could not be 0.
 Elements to send are determined by GetChunkDestinatedToXY function.
+The main problem of this function is memory cost.
+return values:
+0 success
+1 not enough memory
+2 Serializechunk failed
+3 DeserializeChunk failed
 */
 {
     int rank, size;
@@ -319,10 +332,17 @@ Elements to send are determined by GetChunkDestinatedToXY function.
     StripH = N/P;
     BlockH = N/MaxX;
     BlockW = M/MaxY;
-    MaxSendSize = MaxWeight*BlockH + 2*MaxWeight+ 2;
-    
-    int RecieveBuf[MaxSendSize];
+    MaxSendSize = CountElements(Columns) + 2*BlockH*MaxWeight+ 2;
+    int *SendBuf = new (std::nothrow) int[MaxSendSize];
+    int *RecieveBuf = new (std::nothrow) int[MaxSendSize];
+    if(RecieveBuf == NULL)
+    {
+        printf("[DistributeMatrixChunks] My rank is %d, I've failed to allocate %d elements to RecieveBuffer\n", 
+                rank, MaxSendSize);
+        return 1;
+    }
     memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
+    
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
                       
     for(int i = 0; i < P; i++)
@@ -334,10 +354,16 @@ Elements to send are determined by GetChunkDestinatedToXY function.
                     MPI_Cart_coords(Cartesian, j, 2, DestCoords);
                     if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk))
                     {
-                       SendSize = CountElements(Chunk) + 2*Chunk.size() + 2;
-                       int SendBuf[SendSize]; 
-                       size = SerializeChunk(Chunk.begin(), Chunk.end(), SendSize, 0, SendBuf);     
+                      // SendSize = CountElements(Chunk) + 2*Chunk.size() + 2;
+                       
+                     //  SendBuf = new (std::nothrow) int[SendSize];
+                      // if(SendBuf == NULL)
+                        //   printf("Not enough memory, need %d.\n", SendSize);
+                       
+                       if(! (size = SerializeChunk(Chunk.begin(), Chunk.end(), SendSize, 0, SendBuf)))
+                           return 2;
                        MPI_Send(SendBuf, size, MPI_INT, j, 0 , MPI_COMM_WORLD);
+                      // delete [] SendBuf;
                     }
                     else                            
                     {
@@ -352,14 +378,17 @@ Elements to send are determined by GetChunkDestinatedToXY function.
             MPI_Recv(RecieveBuf, MaxSendSize, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
             if(RecieveBuf[0])
             {
-                DeserializeChunk(RecieveBuf, Type, Chunk);
-                Block.insert(Chunk.begin(), Chunk.end());
+               if(!DeserializeChunk(RecieveBuf, Type, Chunk))
+                   return 3;
+               Block.insert(Chunk.begin(), Chunk.end());
             }
         }
             
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
     GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk);
     Block.insert(Chunk.begin(), Chunk.end());
+    delete [] RecieveBuf;
+    delete [] SendBuf;
 }
 
 
