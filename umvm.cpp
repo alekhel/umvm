@@ -58,9 +58,9 @@ void TryGenerateStripRowwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     H = N/P;
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, strip);
-    for (int i = rank*H; i < (rank+1)*H; i++)
-        for(unsigned int j = 0;  j < strip[i].size(); j ++ )
-            printf ("My rank is %d, my  strip[%d][%d] = %7lu\n", rank, i, j,  strip[i][j]);
+   // for (int i = rank*H; i < (rank+1)*H; i++)
+     //   for(unsigned int j = 0;  j < strip[i].size(); j ++ )
+       //     printf ("My rank is %d, my  strip[%d][%d] = %7lu\n", rank, i, j,  strip[i][j]);
 }
 
 void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
@@ -68,8 +68,8 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
     Columns.clear();
     for(Matrix::iterator it = Rows.begin(); it != Rows.end(); it++)
         {
-        for(unsigned int i = 0; i < it->second.size(); i++)
-            Columns[it->second[i]].push_back(it->first);
+        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
+            Columns[*it1].insert(it->first);
         }
 }
 
@@ -84,8 +84,8 @@ void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned i
     RowwiseToColumnwise(Rows, Columns);
 
     for(Matrix::iterator it = Columns.begin(); it != Columns.end(); it++)
-        for(unsigned int j = 0;  j < it->second.size(); j ++ )
-              printf ("My rank is %d, my  Columns[%lu][%u] = %7lu\n", rank, it->first, j,  it->second[j]);
+        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
+              printf ("My rank is %d, I have [%lu,%lu]\n", rank, it->first, *it1);
 }
 
 
@@ -142,9 +142,10 @@ int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Si
         }
         #endif
  
-        for(unsigned int i = 0; i < it->second.size(); i++)
+        int i = 0;
+        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++, i++)
         {
-            Res[HeaderSize + 2*ColumnsCount + Offset + i] = it->second[i];    
+            Res[HeaderSize + 2*ColumnsCount + Offset + i] = *it1;    
         }
         Offset += it->second.size();
         Res[UsedSpace++] = Offset;
@@ -188,7 +189,7 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
     {
         
         while(j++ < Buf[i + HeaderSize + ColumnsCount])
-            Chunk[Buf[i+ HeaderSize]].push_back(Buf[j + HeaderSize + 2*ColumnsCount]);
+            Chunk[Buf[i+ HeaderSize]].insert(Buf[j + HeaderSize + 2*ColumnsCount]);
         j--;
         #ifdef BUFFER_CHECKS
         if(j >= Size)

@@ -1,11 +1,11 @@
 #include "mpi.h"
 #include <map>
-#include <vector>
+#include <set>
 //#define C11RANDOM // uncomment if your compiler supports -std=c++11
 #define DEBUG_PRINT
 #define BUFFER_CHECKS // comment only if the speedup is really necessary
 typedef unsigned long int Ind;
-typedef std::map < Ind, std::vector <Ind> > Matrix; 
+typedef std::map < Ind, std::set <Ind> > Matrix; 
 
 int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
                           int MinWeight, int MaxWeight, Matrix &m);
