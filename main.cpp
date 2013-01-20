@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
     int opt;
     
     int H;
-    
+    double StartGenerationTime, EndGenerationTime; 
     // parameters for MPI_Cart_*
     int Dimensions[2] = {-1, -1};
     int Periods[2] = {1, 1}; 
@@ -63,10 +63,13 @@ int main(int argc, char* argv[])
 
     Matrix Strip, Columns, Block;
     H = N/P;
+    StartGenerationTime = MPI_Wtime();
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     RowwiseToColumnwise(Strip, Columns);
-    DistributeMatrixChunks( P, MaxX, MaxY, N, M, Columns, Cartesian);
-
+    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
+    EndGenerationTime = MPI_Wtime();
+    if(rank == 0)
+        printf("[main] Generation took %f seconds.\n", EndGenerationTime - StartGenerationTime);
     MPI_Finalize();
     return 1;
 }
