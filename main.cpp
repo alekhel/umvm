@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
 
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     
+    MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Generation of strip took %f seconds.\n", EndTime - StartTime);
@@ -70,6 +71,7 @@ int main(int argc, char* argv[])
 
     RowwiseToColumnwise(Strip, Columns);
    
+    MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Transposition took %f seconds.\n",   EndTime - StartTime);
@@ -77,6 +79,7 @@ int main(int argc, char* argv[])
    
     DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
     
+    MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);

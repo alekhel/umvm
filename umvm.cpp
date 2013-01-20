@@ -67,8 +67,10 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
 {
     Columns.clear();
     for(Matrix::iterator it = Rows.begin(); it != Rows.end(); it++)
+        {
         for(unsigned int i = 0; i < it->second.size(); i++)
             Columns[it->second[i]].push_back(it->first);
+        }
 }
 
 void TryRowwiseToColumnwise(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
@@ -268,7 +270,8 @@ void TryDeserializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
 }
 
 
-int GetChunkDestinatedToXY(int X, int Y, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, Matrix &Chunk)
+int GetChunkDestinatedToXY(int X, int Y, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, 
+                            Matrix::iterator &ChunkStart, Matrix::iterator &ChunkEnd)
 /*
 Chunk is an output parameter.
 This version distributes equal number of columns, but only across processes that should recieve columns from this one.
@@ -283,7 +286,6 @@ Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator proces
     int rank;
     int StripH, BlockH, BlockW;
     Ind Lower, Upper;
-    Chunk.clear();
     StripH = N/P;
     BlockH = N/MaxX;
     BlockW = M/MaxY;
@@ -299,7 +301,8 @@ Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator proces
           Lower = Start->first;
           if(( Upper >= (unsigned int)(Y*BlockW)) && (Lower <= Upper)) 
           {
-                    Chunk = Matrix(Start, ++End); 
+                    ChunkStart = Start;
+                    ChunkEnd = ++End; 
                     return 1;
           }
       }
@@ -320,6 +323,7 @@ return values:
 {
     int rank, size;
     int StripH, BlockH, BlockW;
+    Matrix::iterator ChunkStart, ChunkEnd;
     int MaxSendSize = 0;
     int SendSize = 0;
     int DestCoords[2];
@@ -352,18 +356,19 @@ return values:
                 if(i != j)
                 {
                     MPI_Cart_coords(Cartesian, j, 2, DestCoords);
-                    if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk))
+                    if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, 
+                                              Columns, ChunkStart, ChunkEnd))
                     {
-                      // SendSize = CountElements(Chunk) + 2*Chunk.size() + 2;
+                     //  SendSize = CountElements(Chunk) + 2*Matrix::size(ChunkStart, ChunkEnd) + 2;
+                       SendSize = MaxSendSize;
+                      // int *SendBuf = new (std::nothrow) int[SendSize];
+                       if(SendBuf == NULL)
+                           printf("Not enough memory, need %d.\n", SendSize);
                        
-                     //  SendBuf = new (std::nothrow) int[SendSize];
-                      // if(SendBuf == NULL)
-                        //   printf("Not enough memory, need %d.\n", SendSize);
-                       
-                       if(! (size = SerializeChunk(Chunk.begin(), Chunk.end(), SendSize, 0, SendBuf)))
+                       if(! (size = SerializeChunk(ChunkStart, ChunkEnd, SendSize, 0, SendBuf)))
                            return 2;
                        MPI_Send(SendBuf, size, MPI_INT, j, 0 , MPI_COMM_WORLD);
-                      // delete [] SendBuf;
+                     //  delete [] SendBuf;
                     }
                     else                            
                     {
@@ -385,8 +390,8 @@ return values:
         }
             
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
-    GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, Chunk);
-    Block.insert(Chunk.begin(), Chunk.end());
+    GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, ChunkStart, ChunkEnd);
+    Block.insert(ChunkStart, ChunkEnd);
     delete [] RecieveBuf;
     delete [] SendBuf;
 }
