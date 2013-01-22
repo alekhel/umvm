@@ -189,7 +189,7 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
     {
         
         while(j++ < Buf[i + HeaderSize + ColumnsCount])
-            Chunk[Buf[i+ HeaderSize]].insert(Buf[j + HeaderSize + 2*ColumnsCount]);
+            Chunk[Buf[i+ HeaderSize]].insert(Buf[j + HeaderSize + 2*ColumnsCount - 1]);
         j--;
         #ifdef BUFFER_CHECKS
         if(j >= Size)
@@ -246,6 +246,29 @@ void PrintMatrixStructure(Matrix &m)
         printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu\n", rank, it->second.size(), it->first);
     }
 }
+void PrintMatrix(Matrix &m)
+{
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    for(Matrix::iterator it = m.begin(); it != m.end(); it++)
+    {
+        printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu:", rank, it->second.size(), it->first);
+        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++ )
+            printf(" %lu ", *it1);
+         printf("\n");
+    }
+}
+
+void PrintSerialized(Matrix &m, char* prefix)
+{
+    int s = 3*CountElements(m) + 2;
+    int Buf[s];
+    s = SerializeChunk(m.begin(), m.end(), s, 0, Buf);
+    printf("%s", prefix);
+    for(int i = 0; i < s; i++)
+        printf("%d ", Buf[i]);
+    printf("\n");
+}
 
 void TryDeserializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
@@ -271,7 +294,7 @@ void TryDeserializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
 }
 
 
-int GetChunkDestinatedToXY(int X, int Y, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, 
+int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, 
                             Matrix::iterator &ChunkStart, Matrix::iterator &ChunkEnd)
 /*
 Chunk is an output parameter.
@@ -284,14 +307,12 @@ Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator proces
 4 4 4 4        3 3 4 4
 */
 {
-    int rank;
     int StripH, BlockH, BlockW;
     Ind Lower, Upper;
     StripH = N/P;
     BlockH = N/MaxX;
     BlockW = M/MaxY;
     Matrix::iterator Start, End;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(X != StripH*rank/BlockH)
         return 0;
  
@@ -309,6 +330,13 @@ Example for P = 4, MaxX = MaxY = 2 (Numbers are ranks of origin generator proces
       }
     return 0;    
 }
+
+void AddChunkToBlock(Matrix &Block, Matrix::iterator Start, Matrix::iterator End)
+{
+    for(Matrix::iterator it = Start; it != End; it++)
+       Block[it->first].insert(it->second.begin(), it->second.end());
+}
+
 int DistributeMatrixChunks(int P, int MaxX, int MaxY, int MaxWeight, Ind  N, Ind M, Matrix &Columns, Matrix &Block, MPI_Comm Cartesian)
 /*
 Each process sends a message to all others, containing 0 if it has no elements destinated to reciever, packed chunk.
@@ -318,7 +346,7 @@ The main problem of this function is memory cost.
 return values:
 0 success
 1 not enough memory
-2 Serializechunk failed
+2 SerializeChunk failed
 3 DeserializeChunk failed
 */
 {
@@ -349,7 +377,6 @@ return values:
     memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
     
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-                      
     for(int i = 0; i < P; i++)
         if(rank == i)   
         {
@@ -357,23 +384,20 @@ return values:
                 if(i != j)
                 {
                     MPI_Cart_coords(Cartesian, j, 2, DestCoords);
-                    if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], P, MaxX, MaxY, N, M, 
+                    if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], rank,  P, MaxX, MaxY, N, M, 
                                               Columns, ChunkStart, ChunkEnd))
                     {
-                     //  SendSize = CountElements(Chunk) + 2*Matrix::size(ChunkStart, ChunkEnd) + 2;
                        SendSize = MaxSendSize;
-                      // int *SendBuf = new (std::nothrow) int[SendSize];
                        if(SendBuf == NULL)
                            printf("Not enough memory, need %d.\n", SendSize);
                        
                        if(! (size = SerializeChunk(ChunkStart, ChunkEnd, SendSize, 0, SendBuf)))
                            return 2;
                        MPI_Send(SendBuf, size, MPI_INT, j, 0 , MPI_COMM_WORLD);
-                     //  delete [] SendBuf;
                     }
                     else                            
                     {
-                        int SendBuf[1];
+                       // int SendBuf[1];
                         SendBuf[0]= 0;
                         MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
                     }
@@ -386,13 +410,102 @@ return values:
             {
                if(!DeserializeChunk(RecieveBuf, Type, Chunk))
                    return 3;
-               Block.insert(Chunk.begin(), Chunk.end());
+               AddChunkToBlock(Block, Chunk.begin(), Chunk.end());
+               Chunk.clear();
             }
         }
             
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
-    GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], P, MaxX, MaxY, N, M, Columns, ChunkStart, ChunkEnd);
-    Block.insert(ChunkStart, ChunkEnd);
+    if(GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], rank, P, MaxX, MaxY, N, M, Columns, ChunkStart, ChunkEnd))
+        AddChunkToBlock(Block, ChunkStart, ChunkEnd);
+    delete [] RecieveBuf;
+    delete [] SendBuf;
+}
+
+int TryGetAndInsertChunk(int P, int MaxX, int MaxY, int MaxWeight, Ind  N, Ind M, MPI_Comm Cartesian)
+/*Modelling chunk distribution in 1 process, debug purposes only.*/
+{
+   
+   int size;
+    int StripH, BlockH, BlockW;
+    Matrix::iterator ChunkStart, ChunkEnd;
+    int MaxSendSize = 0;
+    int SendSize = 0;
+    int DestCoords[2];
+    int MyCoords[2];
+    int Type;
+    Matrix Chunk, Columns, Strip;
+    MPI_Status status;
+    Matrix Blocks[P];
+  
+    StripH = N/P;
+    BlockH = N/MaxX;
+    BlockW = M/MaxY;
+    MaxSendSize = BlockH*BlockW + 2*BlockH*MaxWeight+ 2+1;
+  
+    int *SendBuf = new (std::nothrow) int[MaxSendSize];
+    int *RecieveBuf = new (std::nothrow) int[MaxSendSize];
+    
+    memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
+    int ElementsBefore = 0;
+    int ElementsAfter = 0;
+    for(int rank = 0; rank < P; rank++)
+    {
+    Columns.clear();
+    GenerateStripRowwise(rank*StripH, (rank+1)*StripH, 0, M, MaxWeight, MaxWeight, Strip);
+    RowwiseToColumnwise(Strip, Columns);
+    ElementsBefore += CountElements(Columns);
+    printf("Rank %d generated %d elements\n", rank, CountElements(Columns));
+    {
+            for(int j = 0; j < P; j++)
+                if(rank != j)
+                {
+                    size = 1;
+                    if(GetChunkDestinatedToXY(j/MaxX, j%MaxY, rank,  P, MaxX, MaxY, N, M, 
+                                              Columns, ChunkStart, ChunkEnd))
+                    {
+                       
+                       Matrix mm(ChunkStart, ChunkEnd);
+                       printf("Rank %d sent %d elements to %d\n", rank, CountElements(mm), j);
+                       if(! (size = SerializeChunk(ChunkStart, ChunkEnd, MaxSendSize, 0, SendBuf)))
+                           return 2;
+                       printf("Sent size was %d, max is %d\n", size, MaxSendSize);
+                    }
+                    else                            
+                    {
+                        SendBuf[0]= 0;
+                    }
+                    memcpy( RecieveBuf, SendBuf, sizeof(int)*size); 
+                    if(RecieveBuf[0])
+                    {
+                        if(!DeserializeChunk(RecieveBuf, Type, Chunk))
+                            return 3;
+                        
+                        AddChunkToBlock(Blocks[j], Chunk.begin(), Chunk.end());
+                        printf("Rank %d recieved %d elements from %d, and have now %d\n", 
+                                j, CountElements(Chunk), rank, CountElements(Blocks[j]));
+                       printf("RecievedBuf ");
+                       for (int l = 0; l < size; l++)
+                           printf("%d ",RecieveBuf[l]);
+                       printf("\n");
+                       Chunk.clear();
+                    }
+           
+                
+                }
+        
+            
+        if(GetChunkDestinatedToXY(rank/MaxX, rank%MaxY, rank, P, MaxX, MaxY, N, M, Columns, ChunkStart, ChunkEnd))
+            AddChunkToBlock(Blocks[rank], ChunkStart, ChunkEnd);
+        Matrix mm(ChunkStart, ChunkEnd);
+        printf("Rank %d recieved %d elements from %d, and have now %d\n", 
+                                rank, CountElements(mm), rank, CountElements(Blocks[rank]));
+          
+        }
+    }
+    for(int k = 0; k < P; k++)
+        ElementsAfter += CountElements(Blocks[k]);
+    printf("[TryGetAndInsert] Before %d, After %d\n", ElementsBefore, ElementsAfter);
     delete [] RecieveBuf;
     delete [] SendBuf;
 }

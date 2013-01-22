@@ -25,7 +25,7 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            m[i].insert( StartColumn + distribution(generator));
+            m[i].insert(StartColumn + distribution(generator));
         }     
     }
     return 0;

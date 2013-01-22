@@ -17,6 +17,7 @@ int main(int argc, char* argv[])
     int Dimensions[2] = {-1, -1};
     int Periods[2] = {1, 1}; 
     int CartesianCoords[2];
+    int MyElementsBefore, MyElementsAfter, AllElementsBefore, AllElementsAfter;
     Matrix Strip, Columns, Block;
     MaxX = MaxY = N = M = Weight = 0;
  
@@ -63,7 +64,9 @@ int main(int argc, char* argv[])
 
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     
-    MPI_Barrier(MPI_COMM_WORLD);
+    MyElementsBefore = CountElements(Strip);
+   MPI_Barrier(MPI_COMM_WORLD);
+    
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Generation of strip took %f seconds.\n", EndTime - StartTime);
@@ -78,12 +81,23 @@ int main(int argc, char* argv[])
     StartTime = EndTime;
    
     DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
-    
     MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
     
+    MyElementsAfter =  CountElements(Block);
+    
+    MPI_Allreduce(&MyElementsBefore, &AllElementsBefore, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&MyElementsAfter, &AllElementsAfter, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+ 
+ if(rank == 0)
+    {
+     
+        printf("[main] Before %d, After %d\n", AllElementsBefore, AllElementsAfter);
+        if(AllElementsAfter != AllElementsBefore)
+            printf("[main] Lost %d elements!\n", AllElementsAfter - AllElementsBefore);
+    }
     MPI_Finalize();
     return 1;
 }

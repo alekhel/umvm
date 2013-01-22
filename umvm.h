@@ -31,4 +31,13 @@ void TryDeserializeChunk(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
 
 void PrintMatrixStructure(Matrix &m);
 
+void PrintMatrix(Matrix &m);
+
 int CountElements(Matrix &m);
+
+int WriteMatrixToFolder(char name[], Matrix &m);
+
+int ReadMatrixFromFolder(char name[], Matrix &m);
+
+void AddChunkToBlock(Matrix &Block, Matrix::iterator Start, Matrix::iterator End);
+int TryGetAndInsertChunk(int P, int MaxX, int MaxY, int MaxWeight, Ind  N, Ind M, MPI_Comm Cartesian);
