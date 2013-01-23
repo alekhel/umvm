@@ -11,13 +11,7 @@ int main(int argc, char* argv[])
     unsigned int Weight; // Average row weight    
     int opt;
     
-    int H;
-    double StartTime, EndTime; 
-    // parameters for MPI_Cart_*
-    int Dimensions[2] = {-1, -1};
-    int Periods[2] = {1, 1}; 
-    int CartesianCoords[2];
-    Matrix Strip, Columns, Block;
+   Matrix Block;
     MaxX = MaxY = N = M = Weight = 0;
  
     MPI_Comm Cartesian;
@@ -51,12 +45,8 @@ int main(int argc, char* argv[])
         }
     if(ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight))
         return -1;
-
-    Dimensions[0] = MaxX;
-    Dimensions[1] = MaxY;
-    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
-        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
-    MPI_Cart_coords(Cartesian, rank, 2, CartesianCoords);
-   MPI_Finalize();
+  
+    GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M);    
+    MPI_Finalize();
     return 1;
 }

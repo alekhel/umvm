@@ -59,11 +59,30 @@ int CountElements(Matrix &m)
     return res;
 }
 
-int GenerateMatrix(Matrix &MyBlock, int P, Ind MaxX, Ind MaxY, int Weight,Ind N, Ind M, MPI_Comm Cartesian )
+int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, Ind MaxX, Ind MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
+/*
+Every process generates a strip of N/P rows with uniformly distributed non-zeros in each row.
+Each row contains between MinWeight and MaxWeight nonzeroes.
+Than the strips are broken in chunks, M/MaxY columns in each chunk, and sent to corresponding processes of Cartesian
+communicator, wich size is MaxX*MaxY.
+Finally each process of cartesian communicator has a contiguous matrix block with (N/MaxX) columns and (M/MaxY) rows.
+MyBlock and Cartesian are output parameters.
+*/
 {
-/*   int  H = N/P; 
-   double StartTime = MPI_Wtime();
-
+    int rank;
+    Matrix Strip, Columns, Block;
+    int  H = N/P;
+    int Weight = (MaxWeight+MinWeight)/2;
+    double StartTime = MPI_Wtime();
+    double EndTime;
+    int Dimensions[2] = {MaxX, MaxY};
+    int Periods[2] = {1, 1}; 
+ 
+    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
+        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
+  
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     
     MPI_Barrier(MPI_COMM_WORLD);
@@ -86,5 +105,5 @@ int GenerateMatrix(Matrix &MyBlock, int P, Ind MaxX, Ind MaxY, int Weight,Ind N,
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
-*/    
+  
 }

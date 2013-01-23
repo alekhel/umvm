@@ -15,3 +15,6 @@ int WriteMatrixToFolder(char name[], Matrix &m);
 
 int ReadMatrixFromFolder(char name[], Matrix &m);
 
+int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, Ind MaxX, Ind MaxY, 
+                   int MinWeight, int MaxWeight, Ind N, Ind M);
+
