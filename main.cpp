@@ -1,8 +1,8 @@
+#include "umvm.h"
 #include <iostream>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include "umvm.h"
 int main(int argc, char* argv[])
 {
     int rank, P;

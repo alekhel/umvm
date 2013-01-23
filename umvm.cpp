@@ -1,11 +1,11 @@
+#include "umvm.h"
+#include "umvm_internals.h"
 #include <iostream>
 #include <algorithm>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <string.h>
-#include "umvm.h"
-#include "umvm_internals.h"
 int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
 
@@ -78,10 +78,10 @@ MyBlock and Cartesian are output parameters.
     int Dimensions[2] = {MaxX, MaxY};
     int Periods[2] = {1, 1}; 
  
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
   
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
    
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
     
@@ -105,5 +105,5 @@ MyBlock and Cartesian are output parameters.
     EndTime = MPI_Wtime();
     if(rank == 0)
         printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
-  
+    return 0;  
 }

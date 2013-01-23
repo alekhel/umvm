@@ -1,10 +1,10 @@
+#include "umvm.h"
 #include <iostream>
 #include <algorithm>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <string.h>
-#include "umvm.h"
 #include "math.h"
 #include <stdio.h>
 #include <time.h>
@@ -290,6 +290,7 @@ return values:
     MaxSendSize = CountElements(Columns) + 2*BlockH*MaxWeight+ 2;
     int *SendBuf = new (std::nothrow) int[MaxSendSize];
     int *RecieveBuf = new (std::nothrow) int[MaxSendSize];
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(RecieveBuf == NULL)
     {
         printf("[DistributeMatrixChunks] My rank is %d, I've failed to allocate %d elements to RecieveBuffer\n", 
@@ -298,7 +299,6 @@ return values:
     }
     memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
     
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for(int i = 0; i < P; i++)
         if(rank == i)   
         {
@@ -340,5 +340,6 @@ return values:
         AddChunkToBlock(Block, ChunkStart, ChunkEnd);
     delete [] RecieveBuf;
     delete [] SendBuf;
+    return 0;
 }
 
