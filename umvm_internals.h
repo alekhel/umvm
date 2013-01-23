@@ -22,3 +22,7 @@ int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, In
 int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
                           int MinWeight, int MaxWeight, Matrix &m);
 
+int GetNeededBufferSize(Matrix::iterator Start, Matrix::iterator End);
+
+
+int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End);

@@ -66,7 +66,12 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
             Columns[*it1].insert(it->first);
         }
 }
-
+int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End)
+/*Estimates maximum buffer size (Inds number) needed to serialize a chunk*/
+{
+Matrix m(Start, End);
+return 4*CountElements(m) + 2;    
+}
 int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Size, int Type,  int Res[])
 /*Res should be already allocated! 
  Size defines max buffer size. 

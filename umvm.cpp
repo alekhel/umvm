@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
 int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
 
@@ -59,7 +62,7 @@ int CountElements(Matrix &m)
     return res;
 }
 
-int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, Ind MaxX, Ind MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
+int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
 /*
 Every process generates a strip of N/P rows with uniformly distributed non-zeros in each row.
 Each row contains between MinWeight and MaxWeight nonzeroes.
@@ -67,24 +70,25 @@ Than the strips are broken in chunks, M/MaxY columns in each chunk, and sent to 
 communicator, wich size is MaxX*MaxY.
 Finally each process of cartesian communicator has a contiguous matrix block with (N/MaxX) columns and (M/MaxY) rows.
 MyBlock and Cartesian are output parameters.
+Returns 0 on success.
 */
 {
     int rank;
-    Matrix Strip, Columns, Block;
+    Matrix Strip, Columns;
     int  H = N/P;
     int Weight = (MaxWeight+MinWeight)/2;
     double StartTime = MPI_Wtime();
     double EndTime;
     int Dimensions[2] = {MaxX, MaxY};
     int Periods[2] = {1, 1}; 
- 
+    
+
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
   
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
    
     GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
-    
     MPI_Barrier(MPI_COMM_WORLD);
     
     EndTime = MPI_Wtime();
@@ -100,10 +104,102 @@ MyBlock and Cartesian are output parameters.
         printf("[main] Transposition took %f seconds.\n",   EndTime - StartTime);
     StartTime = EndTime;
    
-    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, Block, Cartesian);
+    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
     MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
+
     if(rank == 0)
         printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
   
 }
+
+int StoreMatrixToFolder(char *DirName,char *FileNamePrefix, 
+                        Matrix &Block, int Type, int P, int MaxX, int MaxY, 
+                        int MinWeight, int MaxWeight,  Ind N, Ind M,  
+                        MPI_Comm Cartesian)
+{
+    int rank, size; 
+    int MyCoords[2];
+    FILE *Out;
+    struct stat st;
+    char *FileName;
+   
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
+   
+    if(rank == 0)
+        if(stat(DirName, &st) == -1)
+            if(mkdir(DirName, 0755))
+            {
+                perror("[WriteMatrixToFolder] Could not create directory.\n");
+                return 2;
+            }
+    MPI_Barrier(Cartesian);
+    
+    size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
+    FileName = new char[size];
+    sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]);
+    
+    size = CountElements(Block) + 2*(N/MaxX)*MaxWeight+ 2;
+    int *Buf = new  int[size];
+    size = SerializeChunk(Block.begin(), Block.end(), size, Type, Buf);
+    printf("Serialized size %d, elements number %d\n",size, CountElements(Block) );
+    Out = fopen(FileName, "w");
+    fwrite(Buf, sizeof(int), size, Out);
+    fclose(Out);
+    if(rank == 0)
+    {
+        sprintf(FileName, "%s/config", DirName);    
+        Out = fopen(FileName, "w");
+        fprintf(Out, "%d %d %d %d %d %lu %lu\n", P, MaxX, MaxY, MinWeight, MaxWeight, N, M);
+        fclose(Out);
+    }
+    delete [] Buf;
+    delete [] FileName;
+    return 0;
+}
+
+int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
+                        Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
+                        int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
+                        MPI_Comm &Cartesian)
+/*Reads parameters from $DirName/config, creates Cartesian communicator, loads corresponding blocks en each process.*/
+{
+    int rank, size; 
+    int MyCoords[2];
+    FILE *In;
+    struct stat st;
+    char *FileName;
+    int *Buf;
+    size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
+    FileName = new char[size];
+  
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    sprintf(FileName, "%s/config", DirName);    
+    In = fopen(FileName, "r");
+    if(In == NULL)
+    {
+        printf("[LoadMatrixFromFolder] My rank is %d, can not open %s!\n", rank, FileName);
+    }
+    fscanf(In, "%d %d %d %d %d %lu %lu\n", &P, &MaxX, &MaxY, &MinWeight, &MaxWeight, &N, &M);
+    fclose(In);
+    
+    int Dimensions[2] = {MaxX, MaxY};
+    int Periods[2] = {1, 1}; 
+    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
+        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
+    MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
+ 
+    size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
+    FileName = new char[size];
+    sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]);
+    In = fopen(FileName, "r");
+    fread(&size, sizeof(int), 1, In);
+    Buf = (int*) mmap(NULL, size*sizeof(int), PROT_READ, MAP_PRIVATE, fileno(In), 0);
+    DeserializeChunk(Buf, Type, Block);
+    munmap(Buf, size*sizeof(int));
+    fclose(In);
+    delete [] FileName;
+    return 0;   
+}
+

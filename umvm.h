@@ -11,10 +11,15 @@ int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
 
 int CountElements(Matrix &m);
 
-int WriteMatrixToFolder(char name[], Matrix &m);
+int StoreMatrixToFolder(char *DirName,char *FileNamePrefix, 
+                        Matrix &Block, int Type, int P, int MaxX, int MaxY, 
+                        int MinWeight, int MaxWeight,  Ind N, Ind M,  
+                        MPI_Comm Cartesian);
 
-int ReadMatrixFromFolder(char name[], Matrix &m);
+int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
+                        Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
+                        int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
+                        MPI_Comm &Cartesian);
 
-int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, Ind MaxX, Ind MaxY, 
-                   int MinWeight, int MaxWeight, Ind N, Ind M);
-
+int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, 
+                    int MinWeight, int MaxWeight, Ind N, Ind M);
