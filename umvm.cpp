@@ -1,10 +1,10 @@
+#include "umvm.h"
 #include <iostream>
 #include <algorithm>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <string.h>
-#include "umvm.h"
 #include "umvm_internals.h"
 int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
