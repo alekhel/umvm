@@ -93,7 +93,7 @@ Returns 0 on success.
     
     EndTime = MPI_Wtime();
     if(rank == 0)
-        printf("[main] Generation of strip took %f seconds.\n", EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d. Generation of strip took %f seconds.\n", P, N, Weight, EndTime - StartTime);
     StartTime = EndTime;
 
     RowwiseToColumnwise(Strip, Columns);
@@ -101,7 +101,7 @@ Returns 0 on success.
     MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
-        printf("[main] Transposition took %f seconds.\n",   EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d. Transposition took %f seconds.\n", P, N, Weight, EndTime - StartTime);
     StartTime = EndTime;
    
     DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
@@ -109,7 +109,7 @@ Returns 0 on success.
     EndTime = MPI_Wtime();
 
     if(rank == 0)
-        printf("[main] Distribution took %f seconds.\n",  EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d.  Distribution took %f seconds.\n",  P, N, Weight, EndTime - StartTime);
   
 }
 
@@ -180,8 +180,13 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     if(In == NULL)
     {
         printf("[LoadMatrixFromFolder] My rank is %d, can not open %s!\n", rank, FileName);
+        return 1;
     }
-    fscanf(In, "%d %d %d %d %d %lu %lu\n", &P, &MaxX, &MaxY, &MinWeight, &MaxWeight, &N, &M);
+    if(!fscanf(In, "%d %d %d %d %d %lu %lu\n", &P, &MaxX, &MaxY, &MinWeight, &MaxWeight, &N, &M))
+    {
+        printf("[LoadMatrixFromFolder] My rank is %d, can not read from config file %s\n", rank, FileName);    
+        return 1;
+    }
     fclose(In);
     
     int Dimensions[2] = {MaxX, MaxY};
@@ -192,9 +197,19 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
  
     size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
     FileName = new char[size];
-    sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]);
+    
+    if(!sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]))
+    {
+        printf("[LoadMatrixFromFolder] My rank is %d, sprintf failed.\n", rank);    
+        return 1;
+    }
+ 
+    
+    
     In = fopen(FileName, "r");
-    fread(&size, sizeof(int), 1, In);
+    if(!fread(&size, sizeof(int), 1, In))
+     
+    
     Buf = (int*) mmap(NULL, size*sizeof(int), PROT_READ, MAP_PRIVATE, fileno(In), 0);
     DeserializeChunk(Buf, Type, Block);
     munmap(Buf, size*sizeof(int));

@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
     int Weight; // Average row weight    
     int opt;
     
-   Matrix Block;
+    Matrix Block;
     MaxX = MaxY = N = M = Weight = 0;
  
     MPI_Comm Cartesian;
@@ -48,9 +48,9 @@ int main(int argc, char* argv[])
         return -1;
   
     GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M);    
-    printf("Generated Elements %d\n", CountElements(Block));
-    int Type;
-    StoreMatrixToFolder("sample_output", "out", Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
+//    printf("Generated Elements %d\n", CountElements(Block));
+    int Type = 0;
+//    StoreMatrixToFolder("sample_output", "out", Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
    // LoadMatrixFromFolder("sample_output", "out", Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
     MPI_Finalize();
     return 1;

@@ -62,7 +62,7 @@ void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
     Columns.clear();
     for(Matrix::iterator it = Rows.begin(); it != Rows.end(); it++)
         {
-        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
+        for(Line::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
             Columns[*it1].insert(it->first);
         }
 }
@@ -126,7 +126,7 @@ int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Si
         #endif
  
         int i = 0;
-        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++, i++)
+        for(Line::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++, i++)
         {
             Res[HeaderSize + 2*ColumnsCount + Offset + i] = *it1;    
         }
@@ -204,7 +204,7 @@ void PrintMatrix(Matrix &m)
     for(Matrix::iterator it = m.begin(); it != m.end(); it++)
     {
         printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu:", rank, it->second.size(), it->first);
-        for(std::set<Ind>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++ )
+        for(Line::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++ )
             printf(" %lu ", *it1);
          printf("\n");
     }
