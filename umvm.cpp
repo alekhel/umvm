@@ -110,7 +110,7 @@ Returns 0 on success.
 
     if(rank == 0)
         printf("[Generation]P = %d, N = %lu, W = %d.  Distribution took %f seconds.\n",  P, N, Weight, EndTime - StartTime);
-  
+    return 0; 
 }
 
 int StoreMatrixToFolder(char *DirName,char *FileNamePrefix, 
