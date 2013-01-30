@@ -81,8 +81,8 @@ Returns 0 on success.
     double EndTime;
     int Dimensions[2] = {MaxX, MaxY};
     int Periods[2] = {1, 1}; 
+    double Ratio = double(MaxX)/double(MaxY);
     
-
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
   
@@ -93,7 +93,7 @@ Returns 0 on success.
     
     EndTime = MPI_Wtime();
     if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d. Generation of strip took %f seconds.\n", P, N, Weight, EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f. Initialization took %f seconds.\n", P, N, Weight, Ratio, EndTime - StartTime);
     StartTime = EndTime;
 
     RowwiseToColumnwise(Strip, Columns);
@@ -101,7 +101,7 @@ Returns 0 on success.
     MPI_Barrier(MPI_COMM_WORLD);
     EndTime = MPI_Wtime();
     if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d. Transposition took %f seconds.\n", P, N, Weight, EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.  Transposition took %f seconds.\n", P, N, Weight, Ratio, EndTime - StartTime);
     StartTime = EndTime;
    
     DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
@@ -109,7 +109,7 @@ Returns 0 on success.
     EndTime = MPI_Wtime();
 
     if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d.  Distribution took %f seconds.\n",  P, N, Weight, EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.  Distribution took %f seconds.\n",  P, N, Weight, Ratio, EndTime - StartTime);
     return 0; 
 }
 
