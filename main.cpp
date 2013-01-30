@@ -44,6 +44,11 @@ int main(int argc, char* argv[])
             if(rank == 0) printf( "Unknown option. \n");
             
         }
+ 
+    MaxX = (1<<MaxX);
+    MaxY = (1<<MaxY);
+    N = (1<<N);
+    M = (1<<M);
     if(ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight))
         return -1;
   

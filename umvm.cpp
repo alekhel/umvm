@@ -109,7 +109,7 @@ Returns 0 on success.
     EndTime = MPI_Wtime();
 
     if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.  Distribution took %f seconds.\n",  P, N, Weight, Ratio, EndTime - StartTime);
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.   Distribution took %f seconds.\n",  P, N, Weight, Ratio, EndTime - StartTime);
     return 0; 
 }
 
