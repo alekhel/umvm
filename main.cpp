@@ -13,7 +13,7 @@ int main(int argc, char* argv[])
     int opt;
     int ITER_H;
     Matrix Block;
-    MaxX = MaxY = N = M = Weight = 0;
+    MaxX = MaxY = N = M = Weight = ITER_H = 0;
  
     MPI_Comm Cartesian;
 

@@ -269,6 +269,7 @@ Each process sends a message to all others, containing 0 if it has no elements d
 otherwise. Packages with elements start with number of first dimension entries, could not be 0.
 Elements to send are determined by GetChunkDestinatedToXY function.
 The main problem of this function is memory cost.
+Columns are erased as soon, as they are sent.
 return values:
 0 success
 1 not enough memory
@@ -317,6 +318,7 @@ return values:
                            printf("Not enough memory, need %d.\n", SendSize);
                        if(! (size = SerializeChunk(ChunkStart, ChunkEnd, SendSize, 0, SendBuf)))
                            return 2;
+                       Columns.erase(ChunkStart, ChunkEnd);
                        MPI_Send(SendBuf, size, MPI_INT, j, 0 , MPI_COMM_WORLD);
                     }
                     else                            
