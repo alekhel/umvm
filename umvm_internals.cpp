@@ -17,40 +17,38 @@
 
 
 #ifdef C11RANDOM
-int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
-                          int MinWeight, int MaxWeight, Matrix &m)
+int GenerateStripRowwise( int Height, int Width, int MinWeight, int MaxWeight, 
+                          Matrix &m, Ind RowOffset = 0, Ind ColumnOffset = 0)
 /*Attention, columns indexes are not sorted by default*/
 /*The first version does not use MaxWeight parameter*/
 {
     
     m.clear();
-    int H = EndRow - StartRow;
     std::default_random_engine generator(4);
-    std::uniform_int_distribution<unsigned int> distribution(0, EndColumn - StartColumn);
-    for (Ind i = StartRow; i < EndRow; i++)
+    std::uniform_int_distribution<unsigned int> distribution(0, Width);
+    for (Ind i = 0; i < Height; i++)
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            m[i].insert(StartColumn + distribution(generator));
+            m[i + RowOffset].insert(ColumnOffset + distribution(generator));
         }     
     }
     return 0;
 }
 #else
-int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
-                          int MinWeight, int MaxWeight, Matrix &m)
+int GenerateStripRowwise( int Height, int Width, int MinWeight, int MaxWeight, 
+                          Matrix &m, Ind RowOffset = 0, Ind ColumnOffset = 0)
 /*Attention, columns indexes are not sorted by default*/
 /*The first version does not use MaxWeight parameter*/
 {
     
     m.clear();
-    int H = EndRow - StartRow;
-    srand(time(NULL)^StartRow); 
-    for (Ind i = StartRow; i < EndRow; i++)
+    srand(time(NULL)^RowOffset); 
+    for (int i = 0; i < Height; i++)
     {
         for(int j = 0; j < MinWeight; j++)
         {
-            m[i].insert( StartColumn +  floor((EndColumn - StartColumn)*(double(rand())/RAND_MAX)));
+            m[i + RowOffset].insert( ColumnOffset +  floor(Width*(double(rand())/RAND_MAX)));
         }     
     }
     return 0;
@@ -70,7 +68,7 @@ int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End)
 /*Estimates maximum buffer size (Inds number) needed to serialize a chunk*/
 {
 Matrix m(Start, End);
-return 4*CountElements(m) + 2;    
+return  CountElements(m) + 2*m.size() + 20;    
 }
 int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Size, int Type,  int Res[])
 /*Res should be already allocated! 
@@ -221,7 +219,8 @@ void PrintSerialized(Matrix &m, char* prefix)
     printf("\n");
 }
 
-int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, 
+int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, 
+                            Ind N, Ind M, Matrix &Columns, 
                             Matrix::iterator &ChunkStart, Matrix::iterator &ChunkEnd)
 /*
 Chunk is an output parameter.
@@ -287,12 +286,11 @@ return values:
     int Type;
     Matrix Chunk;
     MPI_Status status;
-    Block.clear();
 
     StripH = N/P;
     BlockH = N/MaxX;
     BlockW = M/MaxY;
-    MaxSendSize = CountElements(Columns) + 2*BlockH*MaxWeight+ 2;
+    MaxSendSize = CountElements(Columns) + 2*Columns.size() + 20;
     int *SendBuf = new (std::nothrow) int[MaxSendSize];
     int *RecieveBuf = new (std::nothrow) int[MaxSendSize];
     if(RecieveBuf == NULL)

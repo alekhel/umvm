@@ -11,7 +11,7 @@ int main(int argc, char* argv[])
     Ind N, M; //Matrix height and width
     int Weight; // Average row weight    
     int opt;
-    
+    int ITER_H;
     Matrix Block;
     MaxX = MaxY = N = M = Weight = 0;
  
@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &P);
 
  
-    while((opt = getopt(argc, argv, "X:Y:W:M:N:")) != -1)
+    while((opt = getopt(argc, argv, "X:Y:W:M:N:I:")) != -1)
         switch(opt)
         {
         case 'X':
@@ -40,6 +40,9 @@ int main(int argc, char* argv[])
         case 'M':
             M = strtoul(optarg, NULL, 0);
             break;
+         case 'I':
+            ITER_H = strtoul(optarg, NULL, 0);
+            break;
          default:
             if(rank == 0) printf( "Unknown option. \n");
             
@@ -52,8 +55,8 @@ int main(int argc, char* argv[])
     if(ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight))
         return -1;
   
-    GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M);    
-//    printf("Generated Elements %d\n", CountElements(Block));
+    GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M, ITER_H);    
+    printf("My rank is %d, have %d elements.\n", rank, CountElements(Block));
     int Type = 0;
 //    StoreMatrixToFolder("sample_output", "out", Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
    // LoadMatrixFromFolder("sample_output", "out", Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    

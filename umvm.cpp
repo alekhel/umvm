@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include "math.h"
 int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
 
@@ -62,7 +63,7 @@ int CountElements(Matrix &m)
     return res;
 }
 
-int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
+int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, int MinWeight, int MaxWeight,Ind N, Ind M, int ITER_H)
 /*
 Every process generates a strip of N/P rows with uniformly distributed non-zeros in each row.
 Each row contains between MinWeight and MaxWeight nonzeroes.
@@ -79,37 +80,67 @@ Returns 0 on success.
     int Weight = (MaxWeight+MinWeight)/2;
     double StartTime = MPI_Wtime();
     double EndTime;
+    double GenerationTime, TranspositionTime, DistributionTime;
+    GenerationTime = TranspositionTime = DistributionTime = 0;
     int Dimensions[2] = {MaxX, MaxY};
     int Periods[2] = {1, 1}; 
+    int IterationsNum = 1;
     double Ratio = double(MaxX)/double(MaxY);
     
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
   
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-   
-    GenerateStripRowwise(rank*H, (rank+1)*H, 0, M, Weight, Weight, Strip);
-    MPI_Barrier(MPI_COMM_WORLD);
-    
-    EndTime = MPI_Wtime();
-    if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f. Initialization took %f seconds.\n", P, N, Weight, Ratio, EndTime - StartTime);
-    StartTime = EndTime;
+    Ind BigN = N;
+    if(H%ITER_H)
+        IterationsNum = ceil((H)/float(ITER_H));
+    else
+        IterationsNum = H/ITER_H;
+    if (rank == 0)    
+         printf ("[Generation] Started %d iterations: ", IterationsNum);
+    for(int i = 0; i < IterationsNum; i ++ )
+    {
+        int h;
+        
+        h = ITER_H;
+        if(i == IterationsNum - 1)
+            if(H%ITER_H)
+                h = H%ITER_H;
+      //  if(rank == 0)    
+        //    printf("[Generation]StripH = %d\n ", h);
+        Strip.clear();
+        GenerateStripRowwise( h, M, Weight, Weight, Strip, i*ITER_H*P + rank*h, 0);
+       // printf("[Generation]My rank is %d, Generated %d elements\n", rank, CountElements(Strip)); 
+        MPI_Barrier(MPI_COMM_WORLD);
+        EndTime = MPI_Wtime();
+        GenerationTime += (EndTime - StartTime);
+        StartTime = EndTime;
 
-    RowwiseToColumnwise(Strip, Columns);
+        RowwiseToColumnwise(Strip, Columns);
    
-    MPI_Barrier(MPI_COMM_WORLD);
-    EndTime = MPI_Wtime();
-    if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.  Transposition took %f seconds.\n", P, N, Weight, Ratio, EndTime - StartTime);
-    StartTime = EndTime;
+        MPI_Barrier(MPI_COMM_WORLD);
+        EndTime = MPI_Wtime();
+        TranspositionTime += (EndTime - StartTime);
+        StartTime = EndTime;
    
-    DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
-    MPI_Barrier(MPI_COMM_WORLD);
-    EndTime = MPI_Wtime();
+        DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
 
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+        EndTime = MPI_Wtime();
+        DistributionTime += (EndTime - StartTime);
+        StartTime = EndTime;
+        if(rank == 0)
+            printf("%d ", i+1);
+    }
     if(rank == 0)
-        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.   Distribution took %f seconds.\n",  P, N, Weight, Ratio, EndTime - StartTime);
+        printf("\n");
+    if(rank == 0)
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f. Initialization took %f seconds.\n", P, N, Weight, Ratio, GenerationTime);
+     if(rank == 0)
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.  Transposition took %f seconds.\n", P, N, Weight, Ratio, TranspositionTime);
+     if(rank == 0)
+        printf("[Generation]P = %d, N = %lu, W = %d, X/Y = %f.   Distribution took %f seconds.\n",  P, N, Weight, Ratio, DistributionTime);
     return 0; 
 }
 
@@ -213,8 +244,16 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     Buf = (int*) mmap(NULL, size*sizeof(int), PROT_READ, MAP_PRIVATE, fileno(In), 0);
     DeserializeChunk(Buf, Type, Block);
     munmap(Buf, size*sizeof(int));
-    fclose(In);
+fclose(In);
     delete [] FileName;
     return 0;   
 }
 
+int Multiply (Matrix MyBlock, MPI_Comm Cartesian, int P, int MaxX, int MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
+/* It's just a prototype.
+ * Right hand vector at the moment is generated on fly and all its entries are 1's. 
+ * The function incures specific structure -- the Cartesian Communiator given to this function should have MaxX + 1 rows
+ * and MaxX+1 columns!*/
+{
+    
+}

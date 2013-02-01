@@ -1,6 +1,6 @@
 #include "umvm.h"
-int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
-                          int MinWeight, int MaxWeight, Matrix &m);
+int GenerateStripRowwise( int Height, int Width, int MinWeight, int MaxWeight, 
+                          Matrix &m, Ind RowOffset = 0, Ind ColumnOffset = 0);
 
 void RowwiseToColumnwise(Matrix Rows, Matrix &Columns);
 
@@ -17,8 +17,8 @@ void PrintMatrixStructure(Matrix &m);
 
 void PrintMatrix(Matrix &m);
 
-int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, Ind N, Ind M, Matrix &Columns, 
-                            Matrix::iterator &ChunkStart, Matrix::iterator &ChunkEnd);
+int GetChunkDestinatedToXY(int X, int Y, int rank, int P, int MaxX, int MaxY, Ind N, Ind M, 
+                           Matrix &Columns, Matrix::iterator &ChunkStart, Matrix::iterator &ChunkEnd);
 int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColumn, 
                           int MinWeight, int MaxWeight, Matrix &m);
 
