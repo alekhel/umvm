@@ -106,11 +106,9 @@ Returns 0 on success.
         if(i == IterationsNum - 1)
             if(H%ITER_H)
                 h = H%ITER_H;
-      //  if(rank == 0)    
-        //    printf("[Generation]StripH = %d\n ", h);
         Strip.clear();
         GenerateStripRowwise( h, M, Weight, Weight, Strip, i*ITER_H*P + rank*h, 0);
-       // printf("[Generation]My rank is %d, Generated %d elements\n", rank, CountElements(Strip)); 
+        
         MPI_Barrier(MPI_COMM_WORLD);
         EndTime = MPI_Wtime();
         GenerationTime += (EndTime - StartTime);
@@ -154,7 +152,8 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
     FILE *Out;
     struct stat st;
     char *FileName;
-   
+    float StartTime = 1;
+    float EndTime = 2;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
    
@@ -166,25 +165,29 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
                 return 2;
             }
     MPI_Barrier(Cartesian);
-    
+    StartTime = MPI_Wtime();
     size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
     FileName = new char[size];
     sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]);
     
     size = CountElements(Block) + 2*(N/MaxX)*MaxWeight+ 2;
     int *Buf = new  int[size];
+    int size1 = size;
     size = SerializeChunk(Block.begin(), Block.end(), size, Type, Buf);
-    printf("Serialized size %d, elements number %d\n",size, CountElements(Block) );
     Out = fopen(FileName, "w");
     fwrite(Buf, sizeof(int), size, Out);
     fclose(Out);
     if(rank == 0)
     {
-        sprintf(FileName, "%s/config", DirName);    
+        sprintf(FileName, "%s/%s_config", DirName, FileNamePrefix);    
         Out = fopen(FileName, "w");
         fprintf(Out, "%d %d %d %d %d %lu %lu\n", P, MaxX, MaxY, MinWeight, MaxWeight, N, M);
         fclose(Out);
     }
+    MPI_Barrier(Cartesian);
+    EndTime = MPI_Wtime();
+    if(rank == 0)
+        printf("[StoreMatrixToFolder] Storing took %f seconds.\n", EndTime - StartTime);
     delete [] Buf;
     delete [] FileName;
     return 0;
@@ -193,8 +196,12 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
 int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
                         Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
                         int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
-                        MPI_Comm &Cartesian)
-/*Reads parameters from $DirName/config, creates Cartesian communicator, loads corresponding blocks en each process.*/
+                        MPI_Comm &Cartesian, int AdditionalDimensions)
+/*Reads parameters from $DirName/config, creates Cartesian communicator, loads corresponding blocks en each process.
+ AdditionalDimensions is needed, if you use matrix for multipliclication with three types of nodes: workers, vector distributors, result producers.
+ If AdditionalDimensions are non-zero, P should be (X+AdditionalDimensions)*(Y+AdditionalDimensions)!!
+ If you want just to test Load efficiency, or mesure matrix characteristics, AdditionalDimensions should be zero. 
+ * */
 {
     int rank, size; 
     int MyCoords[2];
@@ -206,7 +213,7 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     FileName = new char[size];
   
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    sprintf(FileName, "%s/config", DirName);    
+    sprintf(FileName, "%s/%s_config", DirName, FileNamePrefix);    
     In = fopen(FileName, "r");
     if(In == NULL)
     {
@@ -220,7 +227,7 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     }
     fclose(In);
     
-    int Dimensions[2] = {MaxX, MaxY};
+    int Dimensions[2] = {MaxX+AdditionalDimensions, MaxY+AdditionalDimensions};
     int Periods[2] = {1, 1}; 
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
@@ -244,11 +251,12 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
         printf("[LoadMatrixFromFolder] My rank is %d, fread size failed.\n", rank);
         return 1;
     } 
-    
-    Buf = (int*) mmap(NULL, size*sizeof(int), PROT_READ, MAP_PRIVATE, fileno(In), 0);
+    struct stat info;
+    fstat(fileno(In), &info);
+    Buf = (int*) mmap(NULL, info.st_size , PROT_READ, MAP_PRIVATE, fileno(In), 0);
     DeserializeChunk(Buf, Type, Block);
     munmap(Buf, size*sizeof(int));
-fclose(In);
+    fclose(In);
     delete [] FileName;
     return 0;   
 }

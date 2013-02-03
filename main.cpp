@@ -13,6 +13,7 @@ int main(int argc, char* argv[])
     int opt;
     int ITER_H;
     int Type;
+    double StartTime, EndTime;
     int UsageType = -1;
     char *Folder, *Prefix;
     Matrix Block;
@@ -59,7 +60,6 @@ int main(int argc, char* argv[])
             if(rank == 0) printf( "Unknown option. \n");
             
         }
-    printf("options parsed\n");
     if(UsageType == 0)
     {
         MaxX = (1<<MaxX);
@@ -70,17 +70,16 @@ int main(int argc, char* argv[])
             return -1;
   
         GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M, ITER_H);    
+        
         StoreMatrixToFolder(Folder, Prefix, Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
     }
     if(UsageType == 1)
     {
-        LoadMatrixFromFolder(Folder, Prefix, Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
+        LoadMatrixFromFolder(Folder, Prefix, Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian, 0); 
     }
-    
     if((UsageType != 0)&&(UsageType!=1)&&(rank == 0))
         printf("Please specify -t option: 0 to generate and store new matrix, 1 to load existing matrix.\n");
     
-    printf("[main] My rank is %d, have %d elements.\n", rank, CountElements(Block));
     MPI_Finalize();
     return 1;
 }

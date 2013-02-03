@@ -102,7 +102,6 @@ int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Si
         ColumnsCount++;
     }
     
-    printf("[Serialize] Columns %d \n", ColumnsCount);
     Res[0] = ColumnsCount;
     Res[1] = Type;
     #ifdef BUFFER_CHECKS
@@ -146,7 +145,7 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
  Then there is array of Sum_{i = 0, i = j} Length[i].
  Then there are arrays of second dimension data.
  Variables are named as if first dimension was Columns, second dimension was Rows.
- Returns 0 on failure, Size otherwise.
+Returns 0 on failure, Size otherwise.
 */
 {
     unsigned int ColumnsCount = 0;
@@ -159,11 +158,10 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
         return 0;
     Type = Buf[1];
     Size = Buf[HeaderSize + 2*ColumnsCount - 1]  + HeaderSize + 2*ColumnsCount;
-    printf("[Deserialize] Columns %d, Size %d \n", ColumnsCount, Size);
     #ifdef BUFFER_CHECKS
     if(HeaderSize+ColumnsCount*2 >= Size)
     {
-        printf("Buffer overflow in DeserializeChunk while reading offsets. Size is %d\n", Size);
+        printf("[Deserialize] Columns %d, LastOffset Index %d, Last Offset %d, Size %d\n",ColumnsCount, HeaderSize + 2*ColumnsCount - 1,  Buf[HeaderSize + 2*ColumnsCount - 1], Size );
         return 0;
     }
     #endif

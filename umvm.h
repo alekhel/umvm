@@ -20,7 +20,7 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
 int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
                         Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
                         int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
-                        MPI_Comm &Cartesian);
+                        MPI_Comm &Cartesian, int AdditionalDimensions);
 
 int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, 
                     int MinWeight, int MaxWeight, Ind N, Ind M, int ITER_H);
