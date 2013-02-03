@@ -102,6 +102,7 @@ int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Si
         ColumnsCount++;
     }
     
+    printf("[Serialize] Columns %d \n", ColumnsCount);
     Res[0] = ColumnsCount;
     Res[1] = Type;
     #ifdef BUFFER_CHECKS
@@ -148,9 +149,9 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
  Returns 0 on failure, Size otherwise.
 */
 {
-    int ColumnsCount = 0;
-    int HeaderSize = 2;
-    int Size;
+    unsigned int ColumnsCount = 0;
+    unsigned int HeaderSize = 2;
+    unsigned int Size;
     Chunk.clear();
    
     ColumnsCount = Buf[0];
@@ -158,6 +159,7 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
         return 0;
     Type = Buf[1];
     Size = Buf[HeaderSize + 2*ColumnsCount - 1]  + HeaderSize + 2*ColumnsCount;
+    printf("[Deserialize] Columns %d, Size %d \n", ColumnsCount, Size);
     #ifdef BUFFER_CHECKS
     if(HeaderSize+ColumnsCount*2 >= Size)
     {
@@ -166,14 +168,14 @@ int DeserializeChunk(int Buf[], int &Type, Matrix &Chunk)
     }
     #endif
     int j = 0;
-    for(int i = 0; i < ColumnsCount; i++)
+    for(unsigned int i = 0; i < ColumnsCount; i++)
     {
         
         while(j++ < Buf[i + HeaderSize + ColumnsCount])
             Chunk[Buf[i+ HeaderSize]].insert(Buf[j + HeaderSize + 2*ColumnsCount - 1]);
         j--;
         #ifdef BUFFER_CHECKS
-        if(j >= Size)
+        if((unsigned int)j >= Size)
         {
             printf("Buffer overflow in DeserializeChunk while reading elements, %d elements read.\n", 
                     j - HeaderSize - 2*ColumnsCount);

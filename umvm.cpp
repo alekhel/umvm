@@ -239,7 +239,11 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     
     In = fopen(FileName, "r");
     if(!fread(&size, sizeof(int), 1, In))
-     
+    {
+         
+        printf("[LoadMatrixFromFolder] My rank is %d, fread size failed.\n", rank);
+        return 1;
+    } 
     
     Buf = (int*) mmap(NULL, size*sizeof(int), PROT_READ, MAP_PRIVATE, fileno(In), 0);
     DeserializeChunk(Buf, Type, Block);
