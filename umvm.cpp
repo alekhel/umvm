@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include "math.h"
-int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
+int ParameterSanityCheck(int t, int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight)
 {
 
     int rank;
@@ -39,13 +39,13 @@ int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int 
         MPI_Finalize();
         return -1;
     }
-    if( MaxX * MaxY != P)
+    if( (t == 0)&&(MaxX * MaxY != P))
     {
         if(rank == 0) printf("X*Y should be equal to the number of processes.\n");
         MPI_Finalize();
         return -1;
     }
-    if( N%P || M%P )
+    if( (t == 0)&& (N%P || M%P) )
     {
         if(rank == 0) printf("N and M should be divisible by number of processes.\n");
         MPI_Finalize();
@@ -194,9 +194,9 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
 }
 
 int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
-                        Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
+                        Matrix &Block, int &Type, int &MaxP, int &MaxX, int &MaxY, 
                         int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
-                        MPI_Comm &Cartesian, int AdditionalDimensions)
+                        MPI_Comm Cartesian)
 /*Reads parameters from $DirName/config, creates Cartesian communicator, loads corresponding blocks en each process.
  AdditionalDimensions is needed, if you use matrix for multipliclication with three types of nodes: workers, vector distributors, result producers.
  If AdditionalDimensions are non-zero, P should be (X+AdditionalDimensions)*(Y+AdditionalDimensions)!!
@@ -209,6 +209,9 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
     struct stat st;
     char *FileName;
     int *Buf;
+    MPI_Group World, ReadersGroup;
+    MPI_Comm ReadersComm;
+    int P;
     size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
     FileName = new char[size];
   
@@ -226,46 +229,187 @@ int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix,
         return 1;
     }
     fclose(In);
-    
-    int Dimensions[2] = {MaxX+AdditionalDimensions, MaxY+AdditionalDimensions};
-    int Periods[2] = {1, 1}; 
-    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
-        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
-    MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
- 
-    size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
-    FileName = new char[size];
-    
-    if(!sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]))
+    if((MaxP < P)&& (rank == 0))
     {
-        printf("[LoadMatrixFromFolder] My rank is %d, sprintf failed.\n", rank);    
-        return 1;
+        printf ("[LoadMatrix] Need at least %d processes, only %d given.\n", P, MaxP);
+        return 1;  
     }
- 
-    
-    
-    In = fopen(FileName, "r");
-    if(!fread(&size, sizeof(int), 1, In))
+
+    MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
+    if((MyCoords[0] < MaxX)&&(MyCoords[1] < MaxY)) 
     {
+    
+        size = strlen(DirName) + 1 + strlen(FileNamePrefix) + 22;
+        FileName = new char[size];
+    
+        if(!sprintf(FileName, "%s/%s_%d_%d", DirName, FileNamePrefix, MyCoords[0], MyCoords[1]))
+        {
+            printf("[LoadMatrixFromFolder] My rank is %d, sprintf failed.\n", rank);    
+            return 1;
+        }
+        In = fopen(FileName, "r");
+        if(!fread(&size, sizeof(int), 1, In))
+        {
          
-        printf("[LoadMatrixFromFolder] My rank is %d, fread size failed.\n", rank);
-        return 1;
-    } 
-    struct stat info;
-    fstat(fileno(In), &info);
-    Buf = (int*) mmap(NULL, info.st_size , PROT_READ, MAP_PRIVATE, fileno(In), 0);
-    DeserializeChunk(Buf, Type, Block);
-    munmap(Buf, size*sizeof(int));
-    fclose(In);
-    delete [] FileName;
+            printf("[LoadMatrixFromFolder] My rank is %d, fread size failed.\n", rank);
+            return 1;
+        } 
+        struct stat info;
+        fstat(fileno(In), &info);
+        Buf = (int*) mmap(NULL, info.st_size , PROT_READ, MAP_PRIVATE, fileno(In), 0);
+        DeserializeChunk(Buf, Type, Block);
+        munmap(Buf, size*sizeof(int));
+        fclose(In);
+        delete [] FileName;
+    }
     return 0;   
 }
-
-int Multiply (Matrix MyBlock, MPI_Comm Cartesian, int P, int MaxX, int MaxY, int MinWeight, int MaxWeight,Ind N, Ind M)
-/* It's just a prototype.
- * Right hand vector at the moment is generated on fly and all its entries are 1's. 
- * The function incures specific structure -- the Cartesian Communiator given to this function should have MaxX + 1 rows
- * and MaxX+1 columns!*/
+int LoadIterationForThreeProcessTypes(char *DirName,char *FileNamePrefix, 
+                                      Matrix &Block, int &ProcessType, int &MaxP, int &MaxX, int &MaxY, 
+                                      int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
+                                      MPI_Comm &Cartesian)
+/*
+ *Create Cartesian Communicator (MaxX+1)*(MaxY+1). Load matrix from DirName/FileNamePrefix into processes that are in top left corner of this communicator and assign to this processes ProcessType = 0.
+Processes with cart coords [0:MaxX+1, MaxY] are ResultColletors. They are assigned blocks of size [1, N/MaxX] of zeroes and ProcessType 1;
+Processes with cart coords [MaxX,  0:MaxY+1] are RightDistributors. They are assigned blocks of size [1, M/MaxY] of ones and ProcessType 2.
+The last one process [MaxX+1, MaxY+1] has ProcessType 3.
+ * */
 {
+    int Dimensions[2] = {MaxX+1, MaxY+1};
+    int MatrixMaxX, MatrixMaxY;
+    int Periods[2] = {1, 1}; 
+    int MyCoords[2] = {-1, -1};
+    int ChunkType;
+    int rank;
+    if(MaxP < (MaxX+1)*(MaxY+1))
+    {
+        if(rank == 0)
+            printf("[LoadIteration] Need at least %d processes, %d given.\n", (MaxX+1)*(MaxY+1), MaxP);
+        return 1;
+    }
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
+        if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
     
+    MPI_Cart_coords(Cartesian,rank, 2,  MyCoords);
+    LoadMatrixFromFolder(DirName, FileNamePrefix, 
+                         Block, ChunkType, MaxP,  MatrixMaxX, MatrixMaxY, 
+                         MinWeight,  MaxWeight, N, M,  
+                         Cartesian);
+    
+    ProcessType = -1;
+    if(MyCoords[1] < MatrixMaxY)
+    {
+        ProcessType = 0;
+    }
+    if(MyCoords[0] == MatrixMaxX && MyCoords[1] == MatrixMaxY)
+    {
+        ProcessType = 3;
+        return 0;
+    }
+    
+    if(MyCoords[1] == MatrixMaxY)
+    {
+        ProcessType = 1;
+        Block.clear();
+       // for(unsigned int i = 0; i < N/MatrixMaxX; i++)
+         //   Block[0].insert(MyCoords[0]*N/MatrixMaxX + i);
+    }
+    
+    if(MyCoords[0] == MatrixMaxX)
+    {
+        ProcessType = 2;
+        Block.clear();
+        for(unsigned int i = 0; i < M/MatrixMaxY; i++)
+           Block[0].insert(MyCoords[1]*M/MatrixMaxY + i);
+    }
+    MaxX = MatrixMaxX;
+    MaxY = MatrixMaxY;
+    return 0;
+     
+}
+int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M)
+/*For this function, Matrix chunks on workers should be stored rowwise!*/
+{
+   
+    int MyCoords[2] = {-1, -1};
+    int rank = -1;
+    int RightSendSize, ResSendSize;
+    int *ResSendBuf, *ResRecieveBuf, *RightBuf;
+    int ChunkType;
+    Matrix  Right, Res; //In this version only one line is stored in each of this matrices.
+    MPI_Comm HorizontalComm; //For sending result.
+    MPI_Comm VerticalComm; //For retrieveing right hand vector.
+
+    RightSendSize = (M/MaxY) + 20; //Upper estimate of maximum send size of right hand part.
+    ResSendSize = N/MaxX; //Number of partial result elements, produced by each Worker.
+    ResSendBuf = new int[ResSendSize];
+    ResRecieveBuf = new int[ResSendSize];//MPI_Reduce needs two non aliased buffers. 
+    RightBuf = new int[RightSendSize];
+   
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Cart_coords(Cartesian,rank, 2,  MyCoords);
+    MPI_Comm_split(Cartesian, MyCoords[0], MyCoords[1], &HorizontalComm);
+    MPI_Comm_split(Cartesian, MyCoords[1], MyCoords[0], &VerticalComm);
+    
+    memset(ResRecieveBuf,0, ResSendSize);
+    memset(ResSendBuf,0, ResSendSize);
+   // PrintMatrixStructure(MyBlock);
+    printf("[%d, %d] type %d, lines %d, elems %d,\n",MyCoords[0], MyCoords[1], Type, MyBlock.size(), CountElements(MyBlock));
+    MPI_Barrier(Cartesian);
+    /*Getting right hand vector, part of job for Workers and RightDistributors*/
+    if((Type == 0)||(Type == 2))
+    {
+       if(MyCoords[0] == MaxX)
+            SerializeChunk(MyBlock.begin(), MyBlock.end(), RightSendSize, 0, RightBuf );
+       
+       MPI_Bcast(RightBuf, RightSendSize, MPI_INT, MaxX, VerticalComm);
+      
+       if(MyCoords[0] != MaxX)
+            DeserializeChunk(RightBuf, ChunkType, Right);     
+    }
+   
+    /*Calculate partial result and put its image into ResBuf.*/
+    if(Type == 0)
+    {
+       // PrintMatrixStructure()
+        int i = 0;
+        for(Matrix::iterator it = MyBlock.begin(); it != MyBlock.end(); it++)
+        {
+            ResSendBuf[i++] = MulLine(it->second, Right[0]); 
+           // ResSendBuf[i -1] = 0;       
+            printf("[%d, %d] res[%d] = %d\n",MyCoords[0], MyCoords[1], MyCoords[0]*M/MaxX+i-1,ResSendBuf[i-1]);
+        }
+    }
+    
+    MPI_Barrier(HorizontalComm);
+    /*Now Workers send partial results to ResultHandlers*/
+    printf("Ressensize %d\n", ResSendSize);
+    if(Type == 1)
+    {
+        ResRecieveBuf[1] = 0;
+    }
+    if((Type == 0)||(Type == 1))
+        MPI_Reduce(ResSendBuf, ResRecieveBuf, ResSendSize, MPI_INT, MPI_SUM, MaxY, HorizontalComm);
+    
+    /*ResultHandlers put results from ResBuf in Res[0] with needed offset.*/
+    if(Type == 1)
+    {
+        for(unsigned int i = 0; i < N/MaxX; i++)
+        printf(" MyCoords0 is %d, Result[%lu] = %d\n",MyCoords[0], MyCoords[0]*N/MaxX+i, ResRecieveBuf[i]);
+        LineFromIntBuf(ResRecieveBuf, MyCoords[0]*N/MaxX, N/MaxX, Res[0]);
+    }
+    /*ResultHandlers send the result to RightDistributors for the next iteration*/
+    {
+        
+    }
+    
+    MPI_Barrier(VerticalComm);
+    
+
+    delete [] ResRecieveBuf;
+    delete [] ResSendBuf;
+    delete [] RightBuf;
+    return 0;
 }

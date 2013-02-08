@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 int main(int argc, char* argv[])
 {
-    int rank, P;
+    int rank, P, MaxP;
     int MaxX, MaxY, X, Y; //Grid parameters and coords
     Ind N, M; //Matrix height and width
     int Weight; // Average row weight    
@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &P);
+    MPI_Comm_size(MPI_COMM_WORLD, &MaxP);
 
  
     while((opt = getopt(argc, argv, "t:f:p:X:Y:W:M:N:I:")) != -1)
@@ -60,26 +60,30 @@ int main(int argc, char* argv[])
             if(rank == 0) printf( "Unknown option. \n");
             
         }
+    MaxX = (1<<MaxX);
+    MaxY = (1<<MaxY);
+    N = (1<<N);
+    M = (1<<M);
     if(UsageType == 0)
     {
-        MaxX = (1<<MaxX);
-        MaxY = (1<<MaxY);
-        N = (1<<N);
-        M = (1<<M);
-        if(ParameterSanityCheck(P, MaxX, MaxY, N, M, Weight))
+               if(ParameterSanityCheck(UsageType, MaxP, MaxX, MaxY, N, M, Weight))
             return -1;
   
-        GenerateMatrix(Block, Cartesian, P, MaxX, MaxY, Weight, Weight, N, M, ITER_H);    
+        GenerateMatrix(Block, Cartesian, MaxP, MaxX, MaxY, Weight, Weight, N, M, ITER_H);    
         
-        StoreMatrixToFolder(Folder, Prefix, Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
+        StoreMatrixToFolder(Folder, Prefix, Block, Type,  MaxP, MaxX, MaxY, Weight, Weight, N, M, Cartesian);    
     }
     if(UsageType == 1)
     {
-        LoadMatrixFromFolder(Folder, Prefix, Block, Type,  P, MaxX, MaxY, Weight, Weight, N, M, Cartesian, 0); 
+        
+        LoadIterationForThreeProcessTypes(Folder, Prefix, Block, Type,  MaxP, MaxX, MaxY, Weight, Weight, N, M, Cartesian); 
+        if(Type == 0)
+            RowwiseToColumnwise(Block, Block);
+        GF2MultiplyBroadcastGrid(Block, Type, Cartesian, MaxP, MaxX, MaxY, N, M);
     }
     if((UsageType != 0)&&(UsageType!=1)&&(rank == 0))
         printf("Please specify -t option: 0 to generate and store new matrix, 1 to load existing matrix.\n");
-    
+  // printf("MyRank is %d, I have %d elements. \n", rank, CountElements(Block)); 
     MPI_Finalize();
     return 1;
 }

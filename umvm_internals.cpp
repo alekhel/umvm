@@ -70,6 +70,14 @@ int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End)
 Matrix m(Start, End);
 return  CountElements(m) + 2*m.size() + 20;    
 }
+
+int GetMaxBufferSize(Matrix &Block)
+/*Estimates maximum buffer size (Inds number) needed to serialize a chunk*/
+{
+return  CountElements(Block) + 2*Block.size() + 20;    
+}
+
+
 int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Size, int Type,  int Res[])
 /*Res should be already allocated! 
  Size defines max buffer size. 
@@ -192,7 +200,7 @@ void PrintMatrixStructure(Matrix &m)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for(Matrix::iterator it = m.begin(); it != m.end(); it++)
     {
-        printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu\n", rank, it->second.size(), it->first);
+        printf("[PrintMatrix] My rank is %d, I have %lu elements from  line %lu\n", rank, it->second.size(), it->first);
     }
 }
 void PrintMatrix(Matrix &m)
@@ -201,7 +209,7 @@ void PrintMatrix(Matrix &m)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for(Matrix::iterator it = m.begin(); it != m.end(); it++)
     {
-        printf("[PrintMatrix] My rank is %d, I have elements %lu from  row %lu:", rank, it->second.size(), it->first);
+        printf("[PrintMatrix] My rank is %d, I have %lu elements from  line %lu:", rank, it->second.size(), it->first);
         for(Line::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++ )
             printf(" %lu ", *it1);
          printf("\n");
@@ -345,5 +353,24 @@ return values:
         AddChunkToBlock(Block, ChunkStart, ChunkEnd);
     delete [] RecieveBuf;
     delete [] SendBuf;
+}
+
+int MulLine(Line &v1, Line &v2)
+{
+    Line res;
+    std::set_intersection( v1.begin(), v1.end(), v2.begin(), v2.end(), std::inserter( res, res.begin() ) );
+    return res.size();
+
+}
+
+int LineFromIntBuf(int Buf[], Ind Offset, int BufSize, Line &v1)
+{
+   v1.clear();
+   for(int i = 0; i < BufSize; i++)
+   {
+       v1.insert(Offset+Buf[i]);
+   }
+
+    return 0;
 }
 

@@ -24,5 +24,10 @@ int GenerateStripRowwise(Ind StartRow, Ind EndRow, Ind StartColumn, Ind EndColum
 
 int GetNeededBufferSize(Matrix::iterator Start, Matrix::iterator End);
 
+int GetMaxBufferSize(Matrix &Block);
 
 int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End);
+
+int MulLine(Line &v1, Line &v2);
+
+int LineFromIntBuf(int *Buf, Ind Offset, int BufSize, Line &v1);

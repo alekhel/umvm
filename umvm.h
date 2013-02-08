@@ -8,7 +8,7 @@
 typedef unsigned long int Ind;
 typedef std::set <Ind> Line;
 typedef std::map < Ind, Line > Matrix; 
-int ParameterSanityCheck(int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
+int ParameterSanityCheck(int t, int P, int MaxX, int MaxY, Ind  N, Ind M, unsigned int Weight);
 
 int CountElements(Matrix &m);
 
@@ -20,7 +20,14 @@ int StoreMatrixToFolder(char *DirName,char *FileNamePrefix,
 int LoadMatrixFromFolder(char *DirName,char *FileNamePrefix, 
                         Matrix &Block, int &Type, int &P, int &MaxX, int &MaxY, 
                         int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
-                        MPI_Comm &Cartesian, int AdditionalDimensions);
+                        MPI_Comm Cartesian);
 
 int GenerateMatrix(Matrix &MyBlock, MPI_Comm &Cartesian, int P, int MaxX, int MaxY, 
                     int MinWeight, int MaxWeight, Ind N, Ind M, int ITER_H);
+
+int LoadIterationForThreeProcessTypes(char *DirName,char *FileNamePrefix, 
+                                      Matrix &Block, int &ProcessType, int &MaxP, int &MaxX, int &MaxY, 
+                                      int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
+                                      MPI_Comm &Cartesian);
+
+int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M);
