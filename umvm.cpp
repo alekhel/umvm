@@ -281,13 +281,13 @@ The last one process [MaxX+1, MaxY+1] has ProcessType 3.
     int MyCoords[2] = {-1, -1};
     int ChunkType;
     int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(MaxP < (MaxX+1)*(MaxY+1))
     {
         if(rank == 0)
             printf("[LoadIteration] Need at least %d processes, %d given.\n", (MaxX+1)*(MaxY+1), MaxP);
         return 1;
     }
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
     
@@ -312,8 +312,6 @@ The last one process [MaxX+1, MaxY+1] has ProcessType 3.
     {
         ProcessType = 1;
         Block.clear();
-       // for(unsigned int i = 0; i < N/MatrixMaxX; i++)
-         //   Block[0].insert(MyCoords[0]*N/MatrixMaxX + i);
     }
     
     if(MyCoords[0] == MatrixMaxX)
@@ -328,7 +326,9 @@ The last one process [MaxX+1, MaxY+1] has ProcessType 3.
     return 0;
      
 }
-int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M)
+int RedistributeResVector(Matrix &Res, int Type, int X, int Y, int N, int MaxX, int MaxY, int *Buf, int Size, MPI_Comm Cartesian);
+
+int GF2MultiplyBroadcastGrid(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M)
 /*For this function, Matrix chunks on workers should be stored rowwise!*/
 {
    
@@ -336,13 +336,13 @@ int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int 
     int rank = -1;
     int RightSendSize, ResSendSize;
     int *ResSendBuf, *ResRecieveBuf, *RightBuf;
-    int ChunkType;
-    Matrix  Right, Res; //In this version only one line is stored in each of this matrices.
+    int ChunkType, ierr;
+    Matrix  Right; //In this version only one line is stored in this matrix.
     MPI_Comm HorizontalComm; //For sending result.
     MPI_Comm VerticalComm; //For retrieveing right hand vector.
 
     RightSendSize = (M/MaxY) + 20; //Upper estimate of maximum send size of right hand part.
-    ResSendSize = N/MaxX; //Number of partial result elements, produced by each Worker.
+    ResSendSize = N/MaxX + 20; //20 + Number of partial result elements, produced by each Worker.
     ResSendBuf = new int[ResSendSize];
     ResRecieveBuf = new int[ResSendSize];//MPI_Reduce needs two non aliased buffers. 
     RightBuf = new int[RightSendSize];
@@ -350,66 +350,168 @@ int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int 
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Cart_coords(Cartesian,rank, 2,  MyCoords);
-    MPI_Comm_split(Cartesian, MyCoords[0], MyCoords[1], &HorizontalComm);
-    MPI_Comm_split(Cartesian, MyCoords[1], MyCoords[0], &VerticalComm);
+    MPI_Comm_split(Cartesian, MyCoords[0], MyCoords[1], &HorizontalComm);// MaxX communicators, processes [0..MaxY] in each
+    MPI_Comm_split(Cartesian, MyCoords[1], MyCoords[0], &VerticalComm);// MaxY communicators, processes [0..MaxX] in each
     
-    memset(ResRecieveBuf,0, ResSendSize);
-    memset(ResSendBuf,0, ResSendSize);
-   // PrintMatrixStructure(MyBlock);
-    printf("[%d, %d] type %d, lines %d, elems %d,\n",MyCoords[0], MyCoords[1], Type, MyBlock.size(), CountElements(MyBlock));
+    memset(ResRecieveBuf,0, ResSendSize*sizeof(int));
+    memset(ResSendBuf,0, ResSendSize*sizeof(int));
     MPI_Barrier(Cartesian);
-    /*Getting right hand vector, part of job for Workers and RightDistributors*/
-    if((Type == 0)||(Type == 2))
-    {
-       if(MyCoords[0] == MaxX)
-            SerializeChunk(MyBlock.begin(), MyBlock.end(), RightSendSize, 0, RightBuf );
-       
-       MPI_Bcast(RightBuf, RightSendSize, MPI_INT, MaxX, VerticalComm);
-      
-       if(MyCoords[0] != MaxX)
-            DeserializeChunk(RightBuf, ChunkType, Right);     
-    }
-   
-    /*Calculate partial result and put its image into ResBuf.*/
-    if(Type == 0)
-    {
-       // PrintMatrixStructure()
-        int i = 0;
-        for(Matrix::iterator it = MyBlock.begin(); it != MyBlock.end(); it++)
-        {
-            ResSendBuf[i++] = MulLine(it->second, Right[0]); 
-           // ResSendBuf[i -1] = 0;       
-            printf("[%d, %d] res[%d] = %d\n",MyCoords[0], MyCoords[1], MyCoords[0]*M/MaxX+i-1,ResSendBuf[i-1]);
-        }
-    }
-    
-    MPI_Barrier(HorizontalComm);
-    /*Now Workers send partial results to ResultHandlers*/
-    printf("Ressensize %d\n", ResSendSize);
-    if(Type == 1)
-    {
-        ResRecieveBuf[1] = 0;
-    }
-    if((Type == 0)||(Type == 1))
-        MPI_Reduce(ResSendBuf, ResRecieveBuf, ResSendSize, MPI_INT, MPI_SUM, MaxY, HorizontalComm);
-    
-    /*ResultHandlers put results from ResBuf in Res[0] with needed offset.*/
-    if(Type == 1)
-    {
-        for(unsigned int i = 0; i < N/MaxX; i++)
-        printf(" MyCoords0 is %d, Result[%lu] = %d\n",MyCoords[0], MyCoords[0]*N/MaxX+i, ResRecieveBuf[i]);
-        LineFromIntBuf(ResRecieveBuf, MyCoords[0]*N/MaxX, N/MaxX, Res[0]);
-    }
-    /*ResultHandlers send the result to RightDistributors for the next iteration*/
-    {
-        
-    }
-    
-    MPI_Barrier(VerticalComm);
-    
 
+    double StartTime, EndTime;
+    
+    for(int Iter = 0; Iter < IterNum; Iter++)
+    {
+       // if(Type == 2)
+         //   PrintMatrix(MyBlock);
+        /*Getting right hand vector, part of job for Workers and RightDistributors*/
+        StartTime = MPI_Wtime();
+        if((Type == 0)||(Type == 2))
+        {
+            if(MyCoords[0] == MaxX)
+                SerializeChunk(MyBlock.begin(), MyBlock.end(), RightSendSize, 0, RightBuf );
+       
+             MPI_Bcast(RightBuf, RightSendSize, MPI_INT, MaxX, VerticalComm);
+      
+            if(MyCoords[0] != MaxX)
+                DeserializeChunk(RightBuf, ChunkType, Right);     
+        }
+        EndTime = MPI_Wtime();
+        if(rank == 0)
+            printf("[MultiplyBroadcastGrid] Right part distribution took %f\n", EndTime - StartTime);
+        StartTime = EndTime;
+         /*Calculate partial result and put its image into ResSendBuf.*/
+        if(Type == 0)
+            for(Matrix::iterator it = MyBlock.begin(); it != MyBlock.end(); it++)
+                {
+                    int ind, r;
+                    r =  MulLine(it->second, Right[0])%2; 
+                    ind = it->first - MyCoords[0]*N/MaxX;
+                    ResSendBuf[ind] = r;
+                }
+        MPI_Barrier(HorizontalComm);
+        EndTime = MPI_Wtime();
+        if(rank == 0)
+            printf("[MultiplyBroadcastGrid] Partial calculations took %f\n",  EndTime - StartTime);
+        StartTime = EndTime;
+   
+        /*Now Workers send partial results to ResultHandlers*/
+        if((Type == 0)||(Type == 1))
+            MPI_Reduce(ResSendBuf, ResRecieveBuf, ResSendSize, MPI_INT, MPI_LXOR, MaxY, HorizontalComm);
+          
+        /*ResultHandlers put results from ResRecieveBuf in MyBlock[0] with needed offset.*/
+        if(Type == 1)
+        {
+            MyBlock[0].clear();
+            for(unsigned int i = 0; i < N/MaxX; i++)
+            {
+                if(ResRecieveBuf[i])
+                MyBlock[0].insert(i+MyCoords[0]*N/MaxX);
+            }
+           // PrintMatrix(MyBlock);
+         }
+        EndTime = MPI_Wtime();
+        if(rank == 0)
+            printf("[MultiplyBroadcastGrid] Final calculations took %f\n", EndTime - StartTime );
+        StartTime = EndTime;
+ 
+        /*ResultHandlers send the result to RightDistributors for the next iteration*/
+        if((Type == 1)||(Type == 2))
+            RedistributeResVector(MyBlock, Type, MyCoords[0], MyCoords[1], N, MaxX, MaxY, ResSendBuf,ResSendSize, Cartesian);
+    
+        MPI_Barrier(VerticalComm);
+        EndTime = MPI_Wtime();
+        if(rank == 0)
+            printf("[MultiplyBroadcastGrid] Result redistribution took %f\n",  EndTime - StartTime);
+        StartTime = EndTime;
+ 
+    }
     delete [] ResRecieveBuf;
     delete [] ResSendBuf;
     delete [] RightBuf;
+    return 0;
+}
+
+int RedistributeResVector(Matrix &Res, int Type, int X, int Y, int N, int MaxX, int MaxY, int *Buf, int Size, MPI_Comm Cartesian)
+/*
+ * We have MaxX ResHandlers(Type 1) and MaxY RightDistributors(Type 2). ResHandlers should send their result to one or
+ * several RightDistributors, depending on MaxX/MaxY */
+{
+    int Factor, ChunkType, DestRank;
+    int DestCoords[2];
+    MPI_Status status;
+    Matrix Chunk;
+    Line::iterator Start, End;
+    if(Type == 2)
+        Res.clear();
+    if(MaxX == MaxY)
+    {
+        if(Type == 1)
+        {
+            DestCoords[0] = MaxX;
+            DestCoords[1] = X;
+            MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+            SerializeChunk(Res.begin(), Res.end(), Size, 0, Buf);
+            MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+        }
+        if(Type == 2)
+        {
+            MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+            DeserializeChunk(Buf, ChunkType, Res);
+        }
+    }
+    if(MaxX > MaxY)
+    {
+        Factor = MaxX/MaxY;
+        DestCoords[0] = MaxX;
+        DestCoords[1] = X/Factor;
+
+        if(Type == 1)
+        {
+            MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+            SerializeChunk(Res.begin(), Res.end(), Size, 0, Buf);
+            MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+        }
+        
+        if(Type == 2)
+        {
+            for(int i = 0; i < Factor; i++)
+            {
+                MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+                Chunk.clear();
+                DeserializeChunk(Buf, ChunkType, Chunk);
+                AddChunkToBlock(Res, Chunk.begin(), Chunk.end());
+            }
+        }
+ 
+    }
+    if(MaxY > MaxX)
+    {
+        Factor = MaxY/MaxX;    
+        if(Type == 1)
+        {
+            End = Start = Res[0].begin();
+            for(int i = 0; i < Factor; i++)
+            {
+                End = Res[0].lower_bound(X*N/MaxX + (i+1)*(N/(MaxX*Factor)));
+                Chunk[0].clear();
+                if(*Start < unsigned(X*N/MaxX + (i+1)*(N/(MaxX*Factor))))
+                   Chunk[0].insert(Start, End);
+            
+                DestCoords[0] = MaxX;
+                DestCoords[1] = X*Factor + i;
+                
+                MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+                SerializeChunk(Chunk.begin(), Chunk.end(), Size, 0, Buf);
+                MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+                
+                End = Start;
+            }
+        }
+        if(Type == 2)
+        {
+            MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+            DeserializeChunk(Buf, ChunkType, Res);
+        }
+    }
     return 0;
 }

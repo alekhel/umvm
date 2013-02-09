@@ -30,4 +30,4 @@ int LoadIterationForThreeProcessTypes(char *DirName,char *FileNamePrefix,
                                       int &MinWeight, int &MaxWeight,  Ind &N, Ind &M,  
                                       MPI_Comm &Cartesian);
 
-int GF2MultiplyBroadcastGrid(Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M);
+int GF2MultiplyBroadcastGrid(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M);

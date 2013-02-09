@@ -200,7 +200,7 @@ void PrintMatrixStructure(Matrix &m)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for(Matrix::iterator it = m.begin(); it != m.end(); it++)
     {
-        printf("[PrintMatrix] My rank is %d, I have %lu elements from  line %lu\n", rank, it->second.size(), it->first);
+        printf("[PrintMatrixStruct] My rank is %d, I have %lu elements from  line %lu\n", rank, it->second.size(), it->first);
     }
 }
 void PrintMatrix(Matrix &m)
