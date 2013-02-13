@@ -125,8 +125,8 @@ int SerializeChunk(Matrix::iterator Start, Matrix::iterator End, unsigned int Si
         #ifdef BUFFER_CHECKS
         if( HeaderSize + 2*ColumnsCount + Offset + it->second.size() > Size)
         {
-            printf("Buffer overflow in SerializeChunk while writing second dimension. Needed %lu, given %u\n",
-                    HeaderSize + 2*ColumnsCount + Offset + it->second.size(), Size );
+            printf("Buffer overflow in SerializeChunk while writing second dimension. Needed %lu, given %u. %d columns, %lu Elems)\n",
+                    HeaderSize + 2*ColumnsCount + Offset + it->second.size(), Size, ColumnsCount, it->second.size() );
             return 0;
         }
         #endif
@@ -169,7 +169,7 @@ Returns 0 on failure, Size otherwise.
     #ifdef BUFFER_CHECKS
     if(HeaderSize+ColumnsCount*2 >= Size)
     {
-        printf("[Deserialize] Columns %d, LastOffset Index %d, Last Offset %d, Size %d\n",ColumnsCount, HeaderSize + 2*ColumnsCount - 1,  Buf[HeaderSize + 2*ColumnsCount - 1], Size );
+        printf("[Deserialize] Not enough space! Columns %d, LastOffset Index %d, Last Offset %d, Size %d\n",ColumnsCount, HeaderSize + 2*ColumnsCount - 1,  Buf[HeaderSize + 2*ColumnsCount - 1], Size );
         return 0;
     }
     #endif
@@ -302,10 +302,10 @@ return values:
     MaxSendSize = CountElements(Columns) + 2*Columns.size() + 20;
     int *SendBuf = new (std::nothrow) int[MaxSendSize];
     int *RecieveBuf = new (std::nothrow) int[MaxSendSize];
-    if(RecieveBuf == NULL)
+    if((RecieveBuf == NULL)||(SendBuf == NULL))
     {
         printf("[DistributeMatrixChunks] My rank is %d, I've failed to allocate %d elements to RecieveBuffer\n", 
-                rank, MaxSendSize);
+                rank, 2*MaxSendSize);
         return 1;
     }
     memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
@@ -357,9 +357,30 @@ return values:
 
 int MulLine(Line &v1, Line &v2)
 {
-    Line res;
-    std::set_intersection( v1.begin(), v1.end(), v2.begin(), v2.end(), std::inserter( res, res.begin() ) );
-    return res.size();
+//    Line res;
+ //   std::set_intersection( v1.begin(), v1.end(), v2.begin(), v2.end(), std::inserter( res, res.begin() ) );
+  //  return res.size();
+    int Res = 0;
+    Line::iterator it1, it2;
+    it1 = v1.begin();
+    it2 = v2.begin();
+    while((it1 != v1.end())&&(it2!=v2.end()))
+    {
+        if(*it1 < *it2)
+        {
+            it1++;
+            continue;
+        }
+        if(*it2 < *it1)
+        {
+            it2++;
+            continue;
+        }
+        Res++;
+        it1++;
+        it2++;
+    }
+    return Res;
 
 }
 
@@ -374,3 +395,90 @@ int LineFromIntBuf(int Buf[], Ind Offset, int BufSize, Line &v1)
     return 0;
 }
 
+int RedistributeResVector3(Matrix &Res, int Type, int X, int Y, int N, int MaxX, int MaxY, int *Buf, int Size, MPI_Comm Cartesian)
+/*
+ * We have MaxX ResHandlers(Type 1) and MaxY RightDistributors(Type 2). ResHandlers should send their result to one or
+ * several RightDistributors, depending on MaxX/MaxY */
+{
+    int Factor, ChunkType, DestRank;
+    int DestCoords[2];
+    MPI_Status status;
+    Matrix Chunk;
+    Line::iterator Start, End;
+    if(Type == 2)
+        Res.clear();
+    if(MaxX == MaxY)
+    {
+        if(Type == 1)
+        {
+            DestCoords[0] = MaxX;
+            DestCoords[1] = X;
+            MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+            SerializeChunk(Res.begin(), Res.end(), Size, 0, Buf);
+            MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+        }
+        if(Type == 2)
+        {
+            MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+            DeserializeChunk(Buf, ChunkType, Res);
+        }
+    }
+    if(MaxX > MaxY)
+    {
+        Factor = MaxX/MaxY;
+        DestCoords[0] = MaxX;
+        DestCoords[1] = X/Factor;
+
+        if(Type == 1)
+        {
+            MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+            SerializeChunk(Res.begin(), Res.end(), Size, 0, Buf);
+            MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+        }
+        
+        if(Type == 2)
+        {
+            for(int i = 0; i < Factor; i++)
+            {
+                MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+                Chunk.clear();
+                DeserializeChunk(Buf, ChunkType, Chunk);
+                AddChunkToBlock(Res, Chunk.begin(), Chunk.end());
+            }
+        }
+ 
+    }
+    if(MaxY > MaxX)
+    {
+        Factor = MaxY/MaxX;    
+        if(Type == 1)
+        {
+            End = Start = Res[0].begin();
+            for(int i = 0; i < Factor; i++)
+            {
+                End = Res[0].lower_bound(X*N/MaxY + (i+1)*(N/(MaxY*Factor)));
+                Chunk[0].clear();
+                if(*Start < unsigned(X*N/MaxY + (i+1)*(N/(MaxY*Factor))))
+                   Chunk[0].insert(Start, End);
+                
+                if(Chunk[0].size() > N/MaxY)
+                    printf("[RedistributeVec] Trying to send too many elements! Factor = %d, Interval [ %lu %lu] \n",Factor, *Start, *(End--) );
+                DestCoords[0] = MaxX;
+                DestCoords[1] = X*Factor + i;
+                
+                MPI_Cart_rank(Cartesian, DestCoords, &DestRank);
+                SerializeChunk(Chunk.begin(), Chunk.end(), Size, 0, Buf);
+                MPI_Send(Buf, Size, MPI_INT, DestRank, 0,  MPI_COMM_WORLD);
+                
+                End = Start;
+            }
+        }
+        if(Type == 2)
+        {
+            MPI_Recv(Buf, Size, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+            Res.clear();
+            DeserializeChunk(Buf, ChunkType, Res);
+        }
+    }
+    return 0;
+}

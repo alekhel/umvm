@@ -31,3 +31,6 @@ int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End);
 int MulLine(Line &v1, Line &v2);
 
 int LineFromIntBuf(int *Buf, Ind Offset, int BufSize, Line &v1);
+
+int RedistributeResVector3(Matrix &Res, int Type, int X, int Y, int N, int MaxX, int MaxY, int *Buf, int Size, MPI_Comm Cartesian);
+

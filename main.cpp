@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
            // PrintMatrixStructure(Block);
            // MPI_Barrier(MPI_COMM_WORLD);
             }
-        GF2MultiplyBroadcastGrid(3, Block, Type, Cartesian, MaxP, MaxX, MaxY, N, M);
+        MulBroadcast3(3, Block, Type, Cartesian, MaxP, MaxX, MaxY, N, M, Weight);
     }
     if((UsageType != 0)&&(UsageType!=1)&&(rank == 0))
         printf("Please specify -t option: 0 to generate and store new matrix, 1 to load existing matrix.\n");
