@@ -55,14 +55,16 @@ int GenerateStripRowwise( int Height, int Width, int MinWeight, int MaxWeight,
 }
 #endif
 
-void RowwiseToColumnwise(Matrix Rows, Matrix &Columns)
+void RowwiseToColumnwise(Matrix &Rows, Matrix &Columns)
+//Rows are erased to save memory.
 {
     Columns.clear();
     for(Matrix::iterator it = Rows.begin(); it != Rows.end(); it++)
-        {
+    {
         for(Line::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
             Columns[*it1].insert(it->first);
-        }
+        Rows.erase(it);
+    }
 }
 int GetMaxBufferSize(Matrix::iterator Start, Matrix::iterator End)
 /*Estimates maximum buffer size (Inds number) needed to serialize a chunk*/
@@ -160,16 +162,16 @@ Returns 0 on failure, Size otherwise.
     unsigned int HeaderSize = 2;
     unsigned int Size;
     Chunk.clear();
-   
+    
     ColumnsCount = Buf[0];
     if(!ColumnsCount)
         return 0;
     Type = Buf[1];
     Size = Buf[HeaderSize + 2*ColumnsCount - 1]  + HeaderSize + 2*ColumnsCount;
     #ifdef BUFFER_CHECKS
-    if(HeaderSize+ColumnsCount*2 >= Size)
+    if(HeaderSize+ColumnsCount*2 > Size)
     {
-        printf("[Deserialize] Not enough space! Columns %d, LastOffset Index %d, Last Offset %d, Size %d\n",ColumnsCount, HeaderSize + 2*ColumnsCount - 1,  Buf[HeaderSize + 2*ColumnsCount - 1], Size );
+        printf("[Deserialize] Bad Package! Columns %d, LastOffset Index %d, Last Offset %d, Size %d\n",ColumnsCount, HeaderSize + 2*ColumnsCount - 1,  Buf[HeaderSize + 2*ColumnsCount - 1], Size );
         return 0;
     }
     #endif
@@ -197,11 +199,39 @@ Returns 0 on failure, Size otherwise.
 void PrintMatrixStructure(Matrix &m)
 {
     int rank;
+    Matrix::iterator Column;
+    Line::iterator Max, Min;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    for(Matrix::iterator it = m.begin(); it != m.end(); it++)
+    Ind MaxInd, MinInd, CurMinInd, CurMaxInd;
+    if(m.size() > 0)
+    {
+        Column = m.begin();
+        
+        Max = Column->second.end();
+        Max--;
+        Min = Column->second.begin();
+        MaxInd = *Max;
+        MinInd = *Min;
+
+
+        for(Column = m.begin(); Column != m.end(); Column++)
+        {
+            Max = Column->second.end();
+            Max--;
+            Min = Column->second.begin();
+            CurMaxInd = *Max;
+            CurMinInd =  *Min;
+            if(CurMinInd < MinInd )
+                MinInd = CurMinInd;
+            if(CurMaxInd > MaxInd)
+                MaxInd = CurMaxInd;
+        }
+        printf("[PrintMatrixStructure]My rank is %7d, I've %7lu lines, first is %7lu, MinInd %7lu, MaxInd %7lu.\n", rank, m.size(), m.begin()->first, MinInd, MaxInd);
+    }
+    /* for(Matrix::iterator it = m.begin(); it != m.end(); it++)
     {
         printf("[PrintMatrixStruct] My rank is %d, I have %lu elements from  line %lu\n", rank, it->second.size(), it->first);
-    }
+    }*/
 }
 void PrintMatrix(Matrix &m)
 {
@@ -355,46 +385,6 @@ return values:
     delete [] SendBuf;
 }
 
-int MulLine(Line &v1, Line &v2)
-{
-//    Line res;
- //   std::set_intersection( v1.begin(), v1.end(), v2.begin(), v2.end(), std::inserter( res, res.begin() ) );
-  //  return res.size();
-    int Res = 0;
-    Line::iterator it1, it2;
-    it1 = v1.begin();
-    it2 = v2.begin();
-    while((it1 != v1.end())&&(it2!=v2.end()))
-    {
-        if(*it1 < *it2)
-        {
-            it1++;
-            continue;
-        }
-        if(*it2 < *it1)
-        {
-            it2++;
-            continue;
-        }
-        Res++;
-        it1++;
-        it2++;
-    }
-    return Res;
-
-}
-
-int LineFromIntBuf(int Buf[], Ind Offset, int BufSize, Line &v1)
-{
-   v1.clear();
-   for(int i = 0; i < BufSize; i++)
-   {
-       v1.insert(Offset+Buf[i]);
-   }
-
-    return 0;
-}
-
 int RedistributeResVector3(Matrix &Res, int Type, int X, int Y, int N, int MaxX, int MaxY, int *Buf, int Size, MPI_Comm Cartesian)
 /*
  * We have MaxX ResHandlers(Type 1) and MaxY RightDistributors(Type 2). ResHandlers should send their result to one or
@@ -425,6 +415,7 @@ int RedistributeResVector3(Matrix &Res, int Type, int X, int Y, int N, int MaxX,
     }
     if(MaxX > MaxY)
     {
+       // printf("[RedistributeRes] [%4d, %4d] MaxX>MaxY, BufSize = %d, ResSize = %d\n",X, Y, Size, Res[0].size());
         Factor = MaxX/MaxY;
         DestCoords[0] = MaxX;
         DestCoords[1] = X/Factor;
@@ -461,7 +452,7 @@ int RedistributeResVector3(Matrix &Res, int Type, int X, int Y, int N, int MaxX,
                 if(*Start < unsigned(X*N/MaxY + (i+1)*(N/(MaxY*Factor))))
                    Chunk[0].insert(Start, End);
                 
-                if(Chunk[0].size() > N/MaxY)
+                if(Chunk[0].size() > unsigned( N/MaxY))
                     printf("[RedistributeVec] Trying to send too many elements! Factor = %d, Interval [ %lu %lu] \n",Factor, *Start, *(End--) );
                 DestCoords[0] = MaxX;
                 DestCoords[1] = X*Factor + i;

@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &MaxP);
 
  
-    while((opt = getopt(argc, argv, "t:f:p:X:Y:W:M:N:I:")) != -1)
+    while((opt = getopt(argc, argv, "t:f:p:X:Y:W:M:N:")) != -1)
         switch(opt)
         {
         case 't':
@@ -60,6 +60,7 @@ int main(int argc, char* argv[])
             if(rank == 0) printf( "Unknown option. \n");
             
         }
+    ITER_H = 1;//TODO
     MaxX = (1<<MaxX);
     MaxY = (1<<MaxY);
     N = (1<<N);
@@ -77,13 +78,9 @@ int main(int argc, char* argv[])
     {
         
         LoadIterationForThreeProcessTypes(Folder, Prefix, Block, Type,  MaxP, MaxX, MaxY, Weight, Weight, N, M, Cartesian); 
-        if(Type == 0)
-            {
-            RowwiseToColumnwise(Block, Block);
-           // PrintMatrixStructure(Block);
-           // MPI_Barrier(MPI_COMM_WORLD);
-            }
-        MulBroadcast3(3, Block, Type, Cartesian, MaxP, MaxX, MaxY, N, M, Weight);
+//        PrintMatrixStructure(Block);
+        MPI_Barrier(MPI_COMM_WORLD);
+        MulBroadcast3(1, Block, Type, Cartesian, MaxP, MaxX, MaxY, N, M, Weight);
     }
     if((UsageType != 0)&&(UsageType!=1)&&(rank == 0))
         printf("Please specify -t option: 0 to generate and store new matrix, 1 to load existing matrix.\n");

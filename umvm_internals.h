@@ -2,7 +2,7 @@
 int GenerateStripRowwise( int Height, int Width, int MinWeight, int MaxWeight, 
                           Matrix &m, Ind RowOffset = 0, Ind ColumnOffset = 0);
 
-void RowwiseToColumnwise(Matrix Rows, Matrix &Columns);
+void RowwiseToColumnwise(Matrix &Rows, Matrix &Columns);
 
 int DistributeMatrixChunks(int P, int MaxX, int MaxY, int MaxWeight, 
                             Ind  N, Ind M, Matrix &Columns, Matrix &Block, MPI_Comm Cartesian);

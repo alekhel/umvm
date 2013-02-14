@@ -84,30 +84,17 @@ Returns 0 on success.
     GenerationTime = TranspositionTime = DistributionTime = 0;
     int Dimensions[2] = {MaxX, MaxY};
     int Periods[2] = {1, 1}; 
-    int IterationsNum = 1;
     double Ratio = double(MaxX)/double(MaxY);
     
     if(MPI_Cart_create(MPI_COMM_WORLD, 2, Dimensions, Periods, 0, &Cartesian) != MPI_SUCCESS)
         if(rank == 0) printf("Failed to create Cartesian communicator\n"); 
   
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    Ind BigN = N;
-    if(H%ITER_H)
-        IterationsNum = ceil((H)/float(ITER_H));
-    else
-        IterationsNum = H/ITER_H;
     if (rank == 0)    
-         printf ("[Generation] Started %d iterations: ", IterationsNum);
-    for(int i = 0; i < IterationsNum; i ++ )
-    {
-        int h;
-        
-        h = ITER_H;
-        if(i == IterationsNum - 1)
-            if(H%ITER_H)
-                h = H%ITER_H;
+         printf ("[Generation]P = %d, N = %lu, W = %d, X/Y = %f. BlockH = %7lu, BlockW = %7lu, Elements in strip %10d \n ",P, N, Weight, Ratio, N/MaxX, M/MaxY, Weight*H);
+    
         Strip.clear();
-        GenerateStripRowwise( h, M, Weight, Weight, Strip, i*ITER_H*P + rank*h, 0);
+        GenerateStripRowwise( H, M, Weight, Weight, Strip, rank*H, 0);
         
         MPI_Barrier(MPI_COMM_WORLD);
         EndTime = MPI_Wtime();
@@ -124,13 +111,11 @@ Returns 0 on success.
         DistributeMatrixChunks( P, MaxX, MaxY, Weight, N, M, Columns, MyBlock, Cartesian);
 
         MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
         EndTime = MPI_Wtime();
         DistributionTime += (EndTime - StartTime);
         StartTime = EndTime;
-        if(rank == 0)
-            printf("%d ", i+1);
-    }
+        
+//    PrintMatrixStructure(MyBlock);
     if(rank == 0)
         printf("\n");
     if(rank == 0)
@@ -327,12 +312,14 @@ The last one process [MaxX+1, MaxY+1] has ProcessType 3.
      
 }
 
+void MulBlockByLine(Matrix &Block, Line &v, int Offset, int ResSize, int Res[]);
 int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, int P, int MaxX, int MaxY, Ind N, Ind M, int Weight)
 /* Three types of processes: Workers, Right Distributors, ResHandlers. 
  * For this function, Matrix chunks on workers should be stored rowwise!*/
 {
    
     int MyCoords[2] = {-1, -1};
+    int MyX, MyY;
     int rank = -1;
     int RightSendSize, ResSendSize;
     int *ResSendBuf, *ResRecieveBuf, *RightBuf;
@@ -340,9 +327,17 @@ int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, in
     Matrix  Right; //In this version only one line is stored in this matrix.
     MPI_Comm HorizontalComm; //For sending result.
     MPI_Comm VerticalComm; //For retrieveing right hand vector.
-
-    RightSendSize = (M/MaxY)*2 + 20; //Upper estimate of maximum send size of right hand part.
-    ResSendSize = N/MaxX + 20; //20 + Number of partial result elements, produced by each Worker.
+    int DNum, RNum, BlockW, BlockH; // Number of RightDistributors, ResHandlers, Number of elems sent to each process  dy RightDistributors, to ResHandlers
+    int DX, RY; //X coord for Distributrs, Y coord for ResHandlers.
+    DX = MaxX;
+    RY = MaxY;
+    DNum = MaxY;
+    RNum = MaxX;
+    BlockW = N/MaxY;
+    BlockH = M/MaxX;
+    
+    RightSendSize = BlockW*2 + 20; //Upper estimate of maximum send size of right hand part.
+    ResSendSize = BlockH*2 + 20; //Upper estimate of maximum result send size.
     ResSendBuf = new int[ResSendSize];
     ResRecieveBuf = new int[ResSendSize];//MPI_Reduce needs two non aliased buffers. 
     RightBuf = new int[RightSendSize];
@@ -352,20 +347,22 @@ int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, in
                 rank, 2*ResSendSize + RightSendSize);
         return 1;
     }
-
-    
-
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Cart_coords(Cartesian,rank, 2,  MyCoords);
-    MPI_Comm_split(Cartesian, MyCoords[0], MyCoords[1], &HorizontalComm);// MaxX communicators, processes [0..MaxY] in each
-    MPI_Comm_split(Cartesian, MyCoords[1], MyCoords[0], &VerticalComm);// MaxY communicators, processes [0..MaxX] in each
+    MyX = MyCoords[0];
+    MyY = MyCoords[1];
+    MPI_Comm_split(Cartesian, MyX, MyY, &HorizontalComm);// MaxX communicators, processes [0..MaxY] in each
+    MPI_Comm_split(Cartesian, MyY, MyX, &VerticalComm);// MaxY communicators, processes [0..MaxX] in each
     
+   // if(Type == 0)
+     //   printf("My Coords [%4d, %4d], rank %4d, FirstColumn %7lu,  Columns number %7d, supposed First Row %7d, supposed Last Row %7d \n", MyX, MyY, rank,  MyBlock.begin()->first, MyBlock.size(),  MyX*BlockH, (MyX+1)*BlockH );
+
+ 
     memset(ResRecieveBuf,0, ResSendSize*sizeof(int));
     memset(ResSendBuf,0, ResSendSize*sizeof(int));
     MPI_Barrier(Cartesian);
     float Ratio = ((float)MaxX)/MaxY;
     double StartTime, EndTime;
-    
     for(int Iter = 0; Iter < IterNum; Iter++)
     {
         /*Getting right hand vector, part of job for Workers and RightDistributors*/
@@ -373,45 +370,45 @@ int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, in
         if((Type == 0)||(Type == 2))
         {
 
-            if(MyCoords[0] == MaxX)
+            if(MyCoords[0] == DX) //Distributor
                 SerializeChunk(MyBlock.begin(), MyBlock.end(), RightSendSize, 0, RightBuf );
        
              MPI_Bcast(RightBuf, RightSendSize, MPI_INT, MaxX, VerticalComm);
       
-            if(MyCoords[0] != MaxX)
+            if(MyCoords[0] != DX) // Worker
                 DeserializeChunk(RightBuf, ChunkType, Right);     
         }
+        
         EndTime = MPI_Wtime();
         if(rank == 0)
             printf("[MulBroadcast3] P = %d, N = %lu, W = %d, X/Y = %f. Right part distribution took %f\n", P, N, Weight, Ratio,EndTime - StartTime);
         StartTime = EndTime;
-         /*Calculate partial result and put its image into ResSendBuf.*/
+        
+         //Calculate partial result and put its image into ResSendBuf.
         if(Type == 0)
-            for(Matrix::iterator it = MyBlock.begin(); it != MyBlock.end(); it++)
-                {
-                    int ind, r;
-                    r =  MulLine(it->second, Right[0])%2; 
-                    ind = it->first - MyCoords[0]*N/MaxX;
-                    ResSendBuf[ind] = r;
-                }
+        {
+        
+            MulBlockByLine(MyBlock, Right[0], MyX*BlockH, BlockH, ResSendBuf );    
+        }
         MPI_Barrier(HorizontalComm);
+        
         EndTime = MPI_Wtime();
         if(rank == 0)
             printf("[MulBroadcast3] P = %d, N = %lu, W = %d, X/Y = %f. Partial calculations took    %f\n",  P, N, Weight, Ratio,EndTime - StartTime);
         StartTime = EndTime;
    
-        /*Now Workers send partial results to ResultHandlers*/
+        //Now Workers send partial results to ResultHandlers
         if((Type == 0)||(Type == 1))
-            MPI_Reduce(ResSendBuf, ResRecieveBuf, ResSendSize, MPI_INT, MPI_LXOR, MaxY, HorizontalComm);
+            MPI_Reduce(ResSendBuf, ResRecieveBuf, BlockH, MPI_INT, MPI_LOR, MaxY, HorizontalComm);
           
-        /*ResultHandlers put results from ResRecieveBuf in MyBlock[0] with needed offset.*/
+        //ResultHandlers put results from ResRecieveBuf in MyBlock[0] with needed offset.
         if(Type == 1)
         {
             MyBlock[0].clear();
-            for(unsigned int i = 0; i < N/MaxX; i++)
+            for( int i = 0; i < BlockH; i++)
             {
                 if(ResRecieveBuf[i])
-                    MyBlock[0].insert(i+MyCoords[0]*N/MaxX);
+                    MyBlock[0].insert(i+MyX*BlockH);
             }
          }
         EndTime = MPI_Wtime();
@@ -419,16 +416,16 @@ int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, in
             printf("[MulBroadcast3] P = %d, N = %lu, W = %d, X/Y = %f. Final calculations took      %f\n", P, N, Weight, Ratio,EndTime - StartTime );
         StartTime = EndTime;
  
-        /*ResultHandlers send the result to RightDistributors for the next iteration*/
+        //ResultHandlers send the result to RightDistributors for the next iteration
            if((Type == 1)||(Type == 2))
-            RedistributeResVector3(MyBlock, Type, MyCoords[0], MyCoords[1], N, MaxX, MaxY, ResSendBuf,ResSendSize, Cartesian);
+            RedistributeResVector3(MyBlock, Type, MyX, MyY, N, MaxX, MaxY, ResSendBuf,ResSendSize, Cartesian);
     
         MPI_Barrier(VerticalComm);
         EndTime = MPI_Wtime();
         if(rank == 0)
             printf("[MulBroadcast3] P = %d, N = %lu, W = %d, X/Y = %f. Result redistribution took   %f\n",  P, N, Weight, Ratio,EndTime - StartTime);
         StartTime = EndTime;
- 
+        
     }
     delete [] ResRecieveBuf;
     delete [] ResSendBuf;
@@ -436,3 +433,17 @@ int MulBroadcast3(int IterNum, Matrix MyBlock, int Type,  MPI_Comm Cartesian, in
     return 0;
 }
 
+void MulBlockByLine(Matrix &Block, Line &v, int Offset, int ResSize, int Res[])
+//Block should be stored Columnwise.
+//Res should be allocated!!!
+//Res shoud have BlockH = M/MaxY elements.
+//Offset should be X*BlockH, where X is MyCoords[0] of calling process.
+{
+    memset(Res, 0, ResSize*sizeof(int));
+    Line::iterator Column;
+    Line::iterator Row;
+    for(Column = v.begin(); Column != v.end(); Column++)
+        for(Row = Block[*Column].begin(); Row != Block[*Column].end(); Row++)
+            Res[(*Row) - Offset]^=1;            
+
+}
