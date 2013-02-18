@@ -341,12 +341,32 @@ return values:
     memset(RecieveBuf, 0, MaxSendSize*sizeof(int));
     
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    for(int i = 0; i < P; i++)
-        if(rank == i)   
+   // for(int i = 0; i < P; i++)
+     //   if(rank == i)   
+            
+    for(int j = 0; j < P; j++)
+    {
+         if(rank == j)
+         {
+                    for(int i = 0; i < P; i++)
+                    {
+                        if(i != rank)
+                        {
+                            MPI_Recv(RecieveBuf, MaxSendSize, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
+                            if(RecieveBuf[0])
+                            {
+                                if(!DeserializeChunk(RecieveBuf, Type, Chunk))
+                                    return 3;
+                                AddChunkToBlock(Block, Chunk.begin(), Chunk.end());
+                                Chunk.clear();
+                            }
+                    //        printf("[DistributeMatrixChunks] rank = %3d, recieved from %d\n", rank, i, P);
+                        }
+                    }
+         }
+
+        if(rank != j)
         {
-            for(int j = 0; j < P; j++)
-                if(i != j)
-                {
                     MPI_Cart_coords(Cartesian, j, 2, DestCoords);
                     if(GetChunkDestinatedToXY(DestCoords[0], DestCoords[1], rank,  P, MaxX, MaxY, N, M, 
                                               Columns, ChunkStart, ChunkEnd))
@@ -364,9 +384,15 @@ return values:
                         SendBuf[0]= 0;
                         MPI_Send(SendBuf, 1, MPI_INT, j, 0 , MPI_COMM_WORLD);
                     }
-                }
-        }
-        else
+                     
+               // printf("[DistributeMatrixChunks] rank = %3d, sent to %d\n", rank, j);
+         }
+            
+                MPI_Barrier(MPI_COMM_WORLD);
+                       MPI_Barrier(MPI_COMM_WORLD);
+                printf("[DistributeMatrixChunks] rank = %3d, %d/%d\n", rank, j, P);
+    }
+ /*       else
         {
             MPI_Recv(RecieveBuf, MaxSendSize, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
             if(RecieveBuf[0])
@@ -376,7 +402,7 @@ return values:
                AddChunkToBlock(Block, Chunk.begin(), Chunk.end());
                Chunk.clear();
             }
-        }
+        }*/
             
     MPI_Cart_coords(Cartesian, rank, 2, MyCoords);
     if(GetChunkDestinatedToXY(MyCoords[0], MyCoords[1], rank, P, MaxX, MaxY, N, M, Columns, ChunkStart, ChunkEnd))
